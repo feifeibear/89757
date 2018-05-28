@@ -264,7 +264,6 @@ def main():
         num_workers=args.workers, pin_memory=True)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
     logging.info('training regime: %s', regime)
     print({i: list(w.size())
@@ -292,6 +291,7 @@ def main():
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters())
         else:
             optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
         # train for one epoch
         train_result = train(train_loader, model, criterion, epoch, optimizer, U, V)
@@ -370,12 +370,12 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
     end = time.time()
 
-    masks = []
-    if args.gpus is not None:
-        masks = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-    else:
-        masks = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-    ratio = 1
+    # masks = []
+    # if args.gpus is not None:
+    #     masks = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
+    # else:
+    #     masks = [torch.zeros(w.size()) for w in list(model.parameters())]
+    # ratio = 1
 
 
     for i, (inputs, target) in enumerate(data_loader):
@@ -404,14 +404,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
             #TODO for debug shoul be delete
             optimizer.zero_grad()
-
-            # fjr simulate distributed senario
-            # acc_grad = []
-            # if torch.cuda.is_available():
-            #     acc_grad = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-            # else:
-            #     print("gpu is not avaiable for acc_grad allocation")
-
             # for k, mini_input_var in enumerate(mini_inputs):
             output = model(input_var)
             loss = criterion(output, target_var)
@@ -458,7 +450,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                              'Prune {pruning_time.val:.9f} ({pruning_time.avg:.3f})\t'
                              'Select {select_time.val:.9f} ({select_time.avg:.3f})\t'
                              'Communication {comm_time.val:.9f} ({comm_time.avg:.3f})\t'
-                             'Compress Raton {ratio:.4f})\t'
                              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                              'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                              'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
@@ -469,7 +460,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                                  pruning_time = pruning_time,
                                  select_time = select_time,
                                  comm_time = comm_time,
-                                 ratio = ratio,
                              loss=losses, top1=top1, top5=top5))
 
     return {'loss': losses.avg,

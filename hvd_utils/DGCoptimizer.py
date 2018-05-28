@@ -62,7 +62,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._masks = {v: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
-        self._compressed_msg = {}
+        #TODO size?
+        self._compressed_msg = {k: torch.zeros(0) for k, v
+                                 in sorted(named_parameters)}
         self._compressed_msg_size = {v: 0 for k, v
                                  in sorted(named_parameters)}
         self._v_ref = {v: [] for k, v
@@ -73,7 +75,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._use_nesterov = True
         self._momentum = 0.9
         self._weight_decay = 1e-4
-        self._debug = False
+        self._debug = True 
 
         if size() > 1:
             self._register_hooks()
@@ -93,8 +95,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             assert not p.grad.requires_grad
             name = self._parameter_names.get(p)
             # fjr compress grad
+            p.grad.data.add_(torch.mul(p.data, self._weight_decay))
             p.grad.data.div_(hvd.size())
-            p.grad.data.add_(torch.mul(p.data, self._weight_decay).div_(hvd.size()))
             if self._use_nesterov:
                 self._U[p] = torch.mul(torch.add(self._U[p], p.grad.data), self._momentum)
                 self._V[p] = self._V[p] + self._U[p] + p.grad.data
@@ -115,7 +117,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
             else:
                 compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
 
-            self._compressed_msg[name] = compressed_msg.new(compressed_msg.shape)
+            #self._compressed_msg[name] = compressed_msg.new(compressed_msg.shape)
 
             #handle = allreduce_async_(p.grad.data, average=True, name=name)
             handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)

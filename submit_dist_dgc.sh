@@ -1,7 +1,7 @@
 export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
 
 export BATCH_SIZE=16
-export USE_PRUNING=use_pruning
+export USE_PRUNING=no_use_pruning
 export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
