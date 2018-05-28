@@ -1,5 +1,5 @@
-## DEEP GRADIENT COMPRESSION: REDUCING THE COMMUNICATION BANDWIDTH FOR DISTRIBUTED TRAINING
-# This is a code repository used to reproduce the results in paper [DEEP GRADIENT COMPRESSION: REDUCING THE COMMUNICATION BANDWIDTH FOR DISTRIBUTED TRAINING](https://arxiv.org/pdf/1712.01887.pdf)
+## Deep Gradient Compression: Reducing the Communication Bandwidth for Distributed Training
+## This is a code repository used to reproduce the results in paper [DEEP GRADIENT COMPRESSION: REDUCING THE COMMUNICATION BANDWIDTH FOR DISTRIBUTED TRAINING](https://arxiv.org/pdf/1712.01887.pdf)
 It is based off [convNet.pytorch](https://github.com/eladhoffer/convNet.pytorch) with some helpful options such as:
 
 ## Dependencies
@@ -14,7 +14,7 @@ It is based off [convNet.pytorch](https://github.com/eladhoffer/convNet.pytorch)
 
 ## Usage
 how to use DGCoptimizer
-```bash
+```python
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
     optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
 ```
