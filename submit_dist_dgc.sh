@@ -1,7 +1,7 @@
 export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
 
-export BATCH_SIZE=16
-export USE_PRUNING=no_use_pruning
+export BATCH_SIZE=64
+export USE_PRUNING=use_pruning
 export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
@@ -19,11 +19,11 @@ export USE_NES=use_nesterov
 #export DATASET=imagenet #cifar10
 export DATASET=cifar10
 export NUM_NODE=4
-#--gpus 1,2,4,5 \
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --dataset ${DATASET} \
-  --type torch.FloatTensor \
+  --gpus 1,2,4,5 \
+  --type torch.cuda.FloatTensor \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \
   --epochs 41 \

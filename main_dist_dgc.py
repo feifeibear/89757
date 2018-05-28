@@ -238,7 +238,7 @@ def main():
     for e, v in regime.items():
         if args.lr_bb_fix and 'lr' in v:
             # v['lr'] *= (args.batch_size / args.mini_batch_size) ** 0.5
-            v['lr'] *= (args.batch_size / 128) ** 0.5
+            v['lr'] *= (args.batch_size * hvd.size() / 128) ** 0.5
         adapted_regime[e] = v
     regime = adapted_regime
 
@@ -263,7 +263,6 @@ def main():
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
 
     logging.info('training regime: %s', regime)
     print({i: list(w.size())
@@ -283,15 +282,25 @@ def main():
         V = [torch.zeros(w.size()) for w in list(model.parameters())]
 
 
-
-    for epoch in range(args.start_epoch, args.epochs):
-        optimizer = adjust_optimizer(optimizer, epoch, regime)
-        if args.use_pruning:
-            #TODO u, v will be cleared at the begining of each epoch
-            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+    #TODO u, v will be cleared at the begining of each epoch
+    if args.use_pruning:
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+        if args.gpus is not None:
+            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4)
         else:
-            optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
+    else:
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+
+    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    for epoch in range(args.start_epoch, args.epochs):
+        #optimizer = adjust_optimizer(optimizer, epoch, regime)
+        for e, v in regime.items():
+            if epoch == e // hvd.size():
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = v['lr']
+                break
 
         # train for one epoch
         train_result = train(train_loader, model, criterion, epoch, optimizer, U, V)
@@ -370,14 +379,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
     end = time.time()
 
-    # masks = []
-    # if args.gpus is not None:
-    #     masks = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-    # else:
-    #     masks = [torch.zeros(w.size()) for w in list(model.parameters())]
-    # ratio = 1
-
-
     for i, (inputs, target) in enumerate(data_loader):
         # measure data loading time
         data_time.update(time.time() - end)
@@ -399,12 +400,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
         else:
 
-            # mini_inputs = input_var.chunk(args.batch_size // args.mini_batch_size)
-            # mini_targets = target_var.chunk(args.batch_size // args.mini_batch_size)
-
-            #TODO for debug shoul be delete
-            optimizer.zero_grad()
-            # for k, mini_input_var in enumerate(mini_inputs):
             output = model(input_var)
             loss = criterion(output, target_var)
 
@@ -416,6 +411,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             if args.use_pruning:
                 clip_grad_norm(model.parameters(), 5. * (hvd.size() ** -0.5))
 
+            optimizer.zero_grad()
             loss.backward()
 
             # Master

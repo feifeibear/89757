@@ -25,7 +25,7 @@ import torch
 
 
 class _DGCOptimizer(torch.optim.Optimizer):
-    def __init__(self, params, named_parameters=None):
+    def __init__(self, params, named_parameters=None, use_gpu=True, momentum=0.9, weight_decay=1e-4):
         super(self.__class__, self).__init__(params)
 
         if named_parameters is not None:
@@ -41,7 +41,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
-        self._use_gpu = False
+        self._use_gpu = use_gpu 
+        self._use_nesterov = True
+        self._momentum = momentum
+        self._weight_decay = weight_decay
+        self._debug = False
 
         # define U for residue, V for momentum
         if self._use_gpu:
@@ -53,6 +57,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._masks = {v: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
+            self._compressed_msg = {k: torch.zeros(0).cuda() for k, v
+                                 in sorted(named_parameters)}
         else:
             self._V = {v: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
@@ -62,8 +68,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._masks = {v: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
-        #TODO size?
-        self._compressed_msg = {k: torch.zeros(0) for k, v
+            self._compressed_msg = {k: torch.zeros(0) for k, v
                                  in sorted(named_parameters)}
         self._compressed_msg_size = {v: 0 for k, v
                                  in sorted(named_parameters)}
@@ -72,10 +77,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
         self._handles = {}
         self._grad_accs = []
-        self._use_nesterov = True
-        self._momentum = 0.9
-        self._weight_decay = 1e-4
-        self._debug = True 
 
         if size() > 1:
             self._register_hooks()
@@ -139,7 +140,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
             #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
             #print("hand is ", handle)
             for node_idx in range(hvd.size()):
-                if 0:
+                if self._use_gpu:
                     p_flatten[self._compressed_msg[name][node_idx*msg_size*2 : \
                             node_idx*msg_size*2 + msg_size].type('torch.cuda.LongTensor')] += \
                             self._compressed_msg[name][node_idx*msg_size*2 + msg_size : \
@@ -161,7 +162,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         return super(self.__class__, self).step(closure)
 
 
-def DGCDistributedOptimizer(optimizer, named_parameters=None):
+def DGCDistributedOptimizer(optimizer, named_parameters=None, use_gpu=True, momentum=0.9, weight_decay=1e-4):
     """
     An optimizer that wraps another torch.optim.Optimizer, 
     Compress gradients according to their magnitude
@@ -190,5 +191,5 @@ def DGCDistributedOptimizer(optimizer, named_parameters=None):
     # The goal is to override the `step()` method with an allreduce implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DGCOptimizer.__dict__))
-    return cls(optimizer.param_groups, named_parameters)
+    return cls(optimizer.param_groups, named_parameters,use_gpu, momentum, weight_decay)
 
