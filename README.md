@@ -1,6 +1,7 @@
 ## Deep Gradient Compression: Reducing the Communication Bandwidth for Distributed Training
-## This is a code repository used to reproduce the results in paper [DEEP GRADIENT COMPRESSION: REDUCING THE COMMUNICATION BANDWIDTH FOR DISTRIBUTED TRAINING](https://arxiv.org/pdf/1712.01887.pdf)
-It is based off [convNet.pytorch](https://github.com/eladhoffer/convNet.pytorch) with some helpful options such as:
+This is a code repository used to implement a gradient compression method mentioned in [ICLR 2018 paper](https://arxiv.org/pdf/1712.01887.pdf)
+It is based off [convNet.pytorch](https://github.com/eladhoffer/convNet.pytorch) with some helpful options such as
+You can run it on a GPU or CPU cluster.
 
 ## Dependencies
 
@@ -19,9 +20,15 @@ how to use DGCoptimizer
     optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
 ```
 ## Experiment examples
+run it with mpirun
 ```bash
-sh ./submit_dist_dgc.sh
+./submit_dist_dgc.sh
 ```
+
+## Results
+In a case using resnet44 on cifar10 dataset, compare DGC with SGD.
+![Screenshot](./fig/dgcvssgd.png)
+
 - See *run_experiments.sh* for more examples
 ## Model configuration
 
