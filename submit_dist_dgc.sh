@@ -9,21 +9,22 @@ export USE_SYNC=no_use_sync
 #export MODEL_NAME=cifar10_shallow
 export MODEL_NAME=resnet
 #export MODEL_NAME=mobilenetv2 #resnet
-#export RESNET_DEPTH=18
-export RESNET_DEPTH=44
+export RESNET_DEPTH=18
+#export RESNET_DEPTH=44
 export LRSCALE=lr_bb_fix
 # a Vanilla SGD, useless because py in models decides mom
 export MOMENTUM=0.9
 export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
-#export DATASET=imagenet #cifar10
-export DATASET=cifar10
-export NUM_NODE=4
+export DATASET=imagenet #cifar10
+#export DATASET=cifar10
+export NUM_NODE=1
+export USE_CUDA=cuda.
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --dataset ${DATASET} \
   --gpus 1,2,4,5 \
-  --type torch.cuda.FloatTensor \
+  --type torch.${USE_CUDA}FloatTensor \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \
   --epochs 41 \
@@ -37,6 +38,6 @@ mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --${USE_WARMUP} \
   --${USE_SYNC} \
   --${LRSCALE} \
-  --save dist_${NUM_NODE}_${DATASET}_${MODEL_NAME}${RESNET_DEPTH}_${BATCH_SIZE}_${USE_PRUNING}_${USE_RESIDUE_ACC}_${USE_WARMUP}_${USE_SYNC}_${USE_NES}_allgather_slownet
+  --save dist_${NUM_NODE}_${DATASET}_${MODEL_NAME}${RESNET_DEPTH}_${BATCH_SIZE}_${USE_PRUNING}_${USE_RESIDUE_ACC}_${USE_WARMUP}_${USE_SYNC}_${USE_NES}_${USE_CUDA}
 
 
