@@ -29,7 +29,6 @@ run it with mpirun
 In a case using resnet44 on cifar10 dataset, compare DGC with SGD.
 ![Screenshot](./fig/dgcvssgd.png)
 
-- See *run_experiments.sh* for more examples
 ## Model configuration
 
 Network model is defined by writing a <modelname>.py file in <code>models</code> folder, and selecting it using the <code>model</code> flag. Model function must be registered in <code>models/\_\_init\_\_.py</code>
