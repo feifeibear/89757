@@ -90,6 +90,25 @@ def prune_bin(x, bin_size=1024, topk=1):
     mask = mask.view(x_size)
     return mask
 
+def select_top_k_v2(x, pruning_ratio, U, V):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    top_k = int(x_len * pruning_ratio) + 1
+    _, x_idx = torch.topk(torch.abs(x.view(x_len)), top_k, 0, largest=True, sorted=False)
+#    x_bottom_val, x_bottom_idx = torch.topk((x.view(x_len)), top_k, 0, largest=False, sorted=False)
+    #x_val = torch.cat((x_top_val, x_bottom_val))
+    #x_idx = torch.cat((x_top_idx, x_bottom_idx))
+    x_val = torch.index_select(x.view(x_len), 0, x_idx)
+    U = U.view(-1)
+    V = V.view(-1)
+    U[x_idx] = 0.0
+    V[x_idx] = 0.0
+    U = U.view(x_size)
+    V = V.view(x_size)
+    return U, V, x_val, x_idx
 
 def select_top_k_appr(x, pruning_ratio, mask):
     r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
@@ -98,13 +117,15 @@ def select_top_k_appr(x, pruning_ratio, mask):
     for dim in x.size():
         x_len *= dim
     top_k = int(x_len * pruning_ratio) + 1
-    x_top_val, x_top_idx = torch.topk((x.view(x_len)), top_k, 0, largest=True, sorted=False)
-    x_bottom_val, x_bottom_idx = torch.topk((x.view(x_len)), top_k, 0, largest=False, sorted=False)
-    x_val = torch.cat((x_top_val, x_bottom_val))
-    x_idx = torch.cat((x_top_idx, x_bottom_idx))
+    _, x_idx = torch.topk(torch.abs(x.view(x_len)), top_k, 0, largest=True, sorted=False)
+    # x_bottom_val, x_bottom_idx = torch.topk((x.view(x_len)), top_k, 0, largest=False, sorted=False)
+    # x_val = torch.cat((x_top_val, x_bottom_val))
+    # x_idx = torch.cat((x_top_idx, x_bottom_idx))
+    x_val = torch.index_select(x.view(x_len), 0, x_idx)
     mask = mask.view(-1)
     mask.zero_()
     mask[x_idx] = 1.0
+    mask = 1.0 - mask
     mask = mask.view(x_size)
     return mask, x_val, x_idx
 
@@ -212,12 +233,14 @@ if __name__ == '__main__':
     start = time()
     for i in range(100):
         mask, _, _ = select_top_k(x, ratio, mask)
+    torch.cuda.synchronize()
     stop = time()
     print("prune_perc function run time : ", str((stop-start)/100), "s")
 
     start = time()
     for i in range(100):
         mask, _, _ = select_top_k_appr(x, ratio, mask)
+    torch.cuda.synchronize()
     stop = time()
     print("select_top_k_appr function run time : ", str((stop-start)/100), "s")
 
@@ -230,14 +253,27 @@ if __name__ == '__main__':
     start = time()
     for i in range(100):
         _, x_top_idx = torch.topk(x_flatten, int(x_len * ratio)+1, 0, largest=True, sorted=False)
+    torch.cuda.synchronize()
     stop = time()
     print("top-k API run time : ", str((stop-start)/100), "s")
 
     start = time()
     for i in range(100):
-        _, x_top_idx = torch.topk(x.view(-1), int(x_len * ratio)+1, 0, largest=True, sorted=False)
+        x_size = x.size()
+        x_len = 1;
+        for dim in x.size():
+            x_len *= dim
+        top_k = int(x_len * ratio) + 1
+        _, x_idx = torch.topk((x.view(x_len)), top_k, 0, largest=True, sorted=False)
+        #x_bottom_val, x_bottom_idx = torch.topk((x.view(x_len)), top_k, 0, largest=False, sorted=False)
+        #x_val = torch.cat((x_top_val, x_bottom_val))
+        #x_idx = torch.cat((x_top_idx, x_bottom_idx))
+        x_val = torch.index_select(x.view(x_len), 0, x_idx)
+        mask = mask.view(-1)
         mask.zero_()
-        mask[x_top_idx] = 1.0
+        mask[x_idx] = 1.0
+        mask = mask.view(x_size)
+    torch.cuda.synchronize()
     stop = time()
     print("top-k + clear time : ", str((stop-start)/100), "s")
 

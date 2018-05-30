@@ -46,7 +46,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False
-        self._use_allgather= False 
+        self._use_allgather= True
 
         # define U for residue, V for momentum
         if self._use_gpu:
