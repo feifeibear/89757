@@ -430,6 +430,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                 #     V[idx] = torch.add(torch.mul(V[idx], args.momentum), g)
                 #     p.grad.data = V[idx]
                 #     idx = idx+1
+                optimizer.synchronize()
                 clip_grad_norm(model.parameters(), 5.)
 
             optimizer.step()

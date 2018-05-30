@@ -46,6 +46,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False
+        self._use_allgather= False 
 
         # define U for residue, V for momentum
         if self._use_gpu:
@@ -95,7 +96,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             assert p not in self._handles
             assert not p.grad.requires_grad
             name = self._parameter_names.get(p)
-            if 1:
+            p_size = np.prod(p.size())
+            if self._use_allgather and p_size > 1024:
                 # fjr compress grad
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 p.grad.data.div_(hvd.size())
@@ -110,8 +112,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     self._v_ref[name] = self._V[name] * self._masks[name]
                     allreduce_(self._v_ref[name], average = False)
 
-                self._V[name] = self._V[name] * (1 - self._masks[name])
-                self._U[name] = self._U[name] * (1 - self._masks[name])
+                #self._V[name] = self._V[name] * (1 - self._masks[name])
+                #self._U[name] = self._U[name] * (1 - self._masks[name])
+                self._V[name].mul_(self._masks[name])
+                self._U[name].mul_(self._masks[name])
                 self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
                     compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
@@ -138,7 +142,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         for p in self._handles:
             handle = self._handles[p]
             synchronize(handle)
-            if 1:
+            p_size = np.prod(p.size())
+            if self._use_allgather and p_size > 1024:
                 #fjr decompress
                 name = self._parameter_names.get(p)
                 msg_size = self._compressed_msg_size[name]
