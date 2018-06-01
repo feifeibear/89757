@@ -10,6 +10,7 @@ from bokeh.layouts import column
 #from bokeh.charts import Line, defaults
 #from bkcharts.charts import Line, defaults
 from numpy.random import choice
+import torch.utils.data
 
 #defaults.width = 800
 #defaults.height = 400

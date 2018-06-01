@@ -1,10 +1,10 @@
-export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
+#export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
 
-export BATCH_SIZE=16
-export MINI_BATCH_SIZE=16
-export USE_PRUNING=no_use_pruning
+export BATCH_SIZE=64
+export MINI_BATCH_SIZE=64
+export USE_PRUNING=use_pruning
 export USE_RESIDUE_ACC=use_residue_acc
-export USE_WARMUP=use_warmup
+export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
 export MODEL_NAME=resnet
 #export MODEL_NAME=mobilenetv2 #resnet
@@ -19,8 +19,8 @@ export USE_NES=use_nesterov
 export DATASET=cifar10
 
 python3 main_dgc.py \
-  --gpus 1 \
-  --type torch.FloatTensor \
+  --gpus 1,0,3,4 \
+  --type torch.cuda.FloatTensor \
   --dataset ${DATASET} \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \
