@@ -1,6 +1,5 @@
 ## Deep Gradient Compression: Reducing the Communication Bandwidth for Distributed Training
 This is a code repository used to implement a gradient compression method mentioned in [ICLR 2018 paper](https://arxiv.org/pdf/1712.01887.pdf)
-It is based off [convNet.pytorch](https://github.com/eladhoffer/convNet.pytorch) with some helpful options such as
 You can run it on a GPU or CPU cluster.
 
 ## Dependencies
@@ -26,7 +25,7 @@ run it with mpirun
 ```
 
 ## Results
-In a case using resnet44 on cifar10 dataset, compare DGC with SGD.
+In a case using resnet44 on cifar10 dataset, compare the results of DGC with SGD on 4 GPUs.
 ![Screenshot](./fig/dgcvssgd.png)
 
 ## Model configuration

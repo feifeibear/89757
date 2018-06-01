@@ -457,16 +457,16 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                                         ratio =  1 - 0.999
                                 else:
                                     ratio =  1 - 0.999
-                                masks[idx],_ ,_ = select_top_k_appr(v, ratio, masks[idx])
+                            masks[idx],_ ,_ = select_top_k_appr(v, ratio, masks[idx])
                                 #masks[idx] = 1.0
                             select_time.update(time.time() - select_begin)
 
 
-                            p.grad.data = v * masks[idx]
+                            p.grad.data = v * (1 - masks[idx])
 
                             acc_grad[idx] += p.grad.data
-                            U[k][idx] = u * (1 - masks[idx])
-                            V[k][idx] = v * (1 - masks[idx])
+                            U[k][idx] = u * masks[idx]
+                            V[k][idx] = v * masks[idx]
                         else:
                             acc_grad[idx] += p.grad.data / len(mini_inputs)
 

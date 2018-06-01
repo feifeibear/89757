@@ -24,6 +24,7 @@ import numpy as np
 from prune_utils.pruning import select_top_k, select_top_k_appr, check_sparsity
 import horovod.torch as hvd
 from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
+from horovod.torch.mpi_ops import poll, synchronize
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -290,11 +291,16 @@ def main():
         else:
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
     else:
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
+        #optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+        if args.gpus is not None:
+            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        else:
+            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
 
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-    for epoch in range(args.start_epoch, args.epochs):
+    for epoch in range(args.start_epoch, args.epochs // hvd.size()):
         #optimizer = adjust_optimizer(optimizer, epoch, regime)
         for e, v in regime.items():
             if epoch == e // hvd.size():

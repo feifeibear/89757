@@ -130,6 +130,42 @@ def select_top_k_appr(x, pruning_ratio, mask):
     return mask, x_val, x_idx
 
 
+def select_top_k_thd(x, pruning_ratio, mask):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    max_val = torch.max(torch.abs(x))
+    mean_val = torch.mean(torch.abs(x))
+    #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
+
+    # roughly select top
+    param = 0.5
+    rough_indices = []
+    while len(rough_indices) < top_k:
+        threshold = mean_val + param * (max_val - mean_val)
+        x_sparse = torch.abs(x_flatten) > threshold
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        param -= 0.1
+
+    rough_val = torch.index_select(torch.abs(x_flatten), 0, rough_indices)
+
+    #print(len(rough_indices), top_k)
+    _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
+    x_idx = torch.index_select(rough_indices, 0, fine_indices)
+
+    x_val = torch.index_select(x_flatten, 0, x_idx)
+
+    mask = mask.view(-1)
+    mask.zero_()
+    mask[x_idx] = 1.0
+    mask = 1.0 - mask
+    mask = mask.view(x_size)
+    return mask, x_val, x_idx
+
 
 def select_top_k(x, pruning_ratio, mask):
     r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
@@ -212,8 +248,11 @@ def prune_perc_sample(x, perc):
 
 if __name__ == '__main__':
     torch.manual_seed(123)
-    # x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    x = torch.randn(33278, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(14000000,) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     x = x.cuda()
     x_flatten = x.view(-1)
     x_len = 1;
@@ -227,27 +266,25 @@ if __name__ == '__main__':
     #     mask = prune_bin(x, 1024, 1)
     # stop = time()
     # print(str(stop-start), "s")
-    mask = torch.zeros(x_len).cuda()
-    print(type(mask))
+    mask1 = torch.zeros(x_len).cuda()
+    mask2 = torch.zeros(x_len).cuda()
 
     start = time()
     for i in range(100):
-        mask, _, _ = select_top_k(x, ratio, mask)
+        mask1, val, idx = select_top_k_thd(x, ratio, mask1)
     torch.cuda.synchronize()
     stop = time()
     print("prune_perc function run time : ", str((stop-start)/100), "s")
 
     start = time()
     for i in range(100):
-        mask, _, _ = select_top_k_appr(x, ratio, mask)
+        mask2, _, idx= select_top_k_appr(x, ratio, mask2)
     torch.cuda.synchronize()
     stop = time()
     print("select_top_k_appr function run time : ", str((stop-start)/100), "s")
 
     print("Time transfer in 10Gps Ethernet : ", str(x_len * 8 / (1e9/8)), "s")
-    mask, _, _ = select_top_k(x, ratio, mask)
-    mask2 = prune_perc(x, ratio)
-    diff = mask2 - mask
+    diff = mask1 - mask2
     print("diff is, ", torch.sum(diff))
 
     start = time()
@@ -269,10 +306,10 @@ if __name__ == '__main__':
         #x_val = torch.cat((x_top_val, x_bottom_val))
         #x_idx = torch.cat((x_top_idx, x_bottom_idx))
         x_val = torch.index_select(x.view(x_len), 0, x_idx)
-        mask = mask.view(-1)
-        mask.zero_()
-        mask[x_idx] = 1.0
-        mask = mask.view(x_size)
+        mask1 = mask1.view(-1)
+        mask1.zero_()
+        mask1[x_idx] = 1.0
+        mask1 = mask1.view(x_size)
     torch.cuda.synchronize()
     stop = time()
     print("top-k + clear time : ", str((stop-start)/100), "s")

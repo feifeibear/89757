@@ -18,14 +18,14 @@ from horovod.torch.mpi_ops import allgather, allgather_async, _allgather_async
 from horovod.torch.mpi_ops import broadcast, broadcast_async, broadcast_, broadcast_async_
 from horovod.torch.mpi_ops import poll, synchronize
 import numpy as np
-from .pruning import select_top_k_thd, select_top_k_appr, check_sparsity, prune_perc
+from .pruning import select_top_k_thd, select_top_k_appr, check_sparsity, select_top_k_thdv2 
 import horovod.torch as hvd
 
 import torch
 
 
 class _DGCOptimizer(torch.optim.Optimizer):
-    def __init__(self, params, named_parameters=None, use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False):
+    def __init__(self, params, named_parameters=None, use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=True):
         super(self.__class__, self).__init__(params)
 
         if named_parameters is not None:
@@ -45,8 +45,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False
-        self._use_allgather = use_allgather 
+        self._debug = True #False
+        self._use_allgather = use_allgather ##True
+        #self._use_allgather = False##True
 
         # define U for residue, V for momentum
         if self._use_gpu:
@@ -70,6 +71,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             self._masks = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
             self._compressed_msg = {k: torch.zeros(0) for k, v
+                                 in sorted(named_parameters)}
+        self._compressed_len= {k: torch.zeros(0, dtype=torch.long) for k, v
                                  in sorted(named_parameters)}
         self._compressed_msg_size = {k: 0 for k, v
                                  in sorted(named_parameters)}
@@ -109,13 +112,32 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     self._V[name] = self._V[name] + self._U[name]
                 compressed_val = []
                 compressed_idx = []
-                if p_size < 1000:
-                    self._masks[name], compressed_val, compressed_idx = select_top_k_appr(self._V[name], 0.001, self._masks[name])
-                else:
-                    self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+                #if p_size < 1000:
+                #    self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+                #else:
+                    #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+                    #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+                compressed_val, compressed_idx = select_top_k_thdv2(self._V[name], 0.001)
+                local_len = len(compressed_idx)
+                #tmp_t = torch.tensor([local_len], dtype=torch.long)
+#                tmp_t = torch.tensor([local_len])
+                # print("len list, ", global_len_list)
+                #local_len = torch.min(global_len_list)
+                ##print("local_len, ", local_len)
+                #compressed_val = compressed_val[0:local_len]
+                #compressed_idx = compressed_idx[0:local_len]
+                masks_size = self._masks[name].size()
+                self._masks[name].zero_()
+                self._masks[name] = self._masks[name].view(-1)
+                self._masks[name][compressed_idx] = 1.0
+
+                self._masks[name] = 1.0 - self._masks[name]
+                self._masks[name] = self._masks[name].view(masks_size)
+
                 if self._debug:
-                    self._v_ref[name] = self._V[name] * self._masks[name]
+                    self._v_ref[name] = self._V[name] * (1.0 - self._masks[name])
                     allreduce_(self._v_ref[name], average = False)
+
 
                 #self._V[name] = self._V[name] * (1 - self._masks[name])
                 #self._U[name] = self._U[name] * (1 - self._masks[name])
@@ -123,11 +145,12 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self._U[name].mul_(self._masks[name])
                 self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
-                    compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
+                    compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
                 else:
-                    compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
+                    compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.FloatTensor'),compressed_idx.type('torch.FloatTensor'), compressed_val])
 
                 handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+                #compressed_msg = torch.randn(100).cuda()
                 self._handles[p] = handle
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
@@ -153,7 +176,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
             if self._use_allgather and p_size > 1024:
                 #fjr decompress
                 name = self._parameter_names.get(p)
-                msg_size = self._compressed_msg_size[name]
+                #msg_size = self._compressed_msg_size[name]
                 #print("rank, msg_size is ", hvd.local_rank(), msg_size)
                 g_size = p.grad.data.size()
                 p_flatten = p.grad.data.view(-1)
@@ -161,21 +184,30 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #print("p_flatten size is ,", p_flatten.size())
                 #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
                 #print("hand is ", handle)
+                offset = 0
                 for node_idx in range(hvd.size()):
                     if self._use_gpu:
-                        p_flatten[self._compressed_msg[name][node_idx*msg_size*2 : \
-                                node_idx*msg_size*2 + msg_size].type('torch.cuda.LongTensor')] += \
-                                self._compressed_msg[name][node_idx*msg_size*2 + msg_size : \
-                                node_idx*msg_size*2 + 2*msg_size]
+                        msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
+                        offset += 1
+                        p_flatten[self._compressed_msg[name][ offset: \
+                                offset + msg_size].type('torch.cuda.LongTensor')] += \
+                                self._compressed_msg[name][offset + msg_size : \
+                                offset + 2*msg_size]
+                        offset += msg_size * 2;
                     else:
-                        p_flatten[self._compressed_msg[name][node_idx*msg_size*2 : \
-                                node_idx*msg_size*2 + msg_size].type('torch.LongTensor')] += \
-                                self._compressed_msg[name][node_idx*msg_size*2 + msg_size : \
-                                node_idx*msg_size*2 + 2*msg_size]
+                        msg_size = self._compressed_msg[name][offset].type('torch.LongTensor')
+                        offset += 1
+                        p_flatten[self._compressed_msg[name][ offset: \
+                                offset + msg_size].type('torch.LongTensor')] += \
+                                self._compressed_msg[name][offset + msg_size : \
+                                offset + 2*msg_size]
+                        offset += msg_size * 2;
 
                 p.grad.data = p.grad.data.view(g_size)
                 if self._debug:
-                    print("diff : ", torch.sum(self._v_ref[name] - p.grad.data))
+                    diff = torch.sum(self._v_ref[name] - p.grad.data)
+                    if( torch.abs(diff) > 1e-6 ):
+                        print("error diff is, ", diff)
 
         self._handles.clear()
 
@@ -213,5 +245,5 @@ def DGCDistributedOptimizer(optimizer, named_parameters=None, use_gpu=True, mome
     # The goal is to override the `step()` method with an allreduce implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DGCOptimizer.__dict__))
-    return cls(optimizer.param_groups, named_parameters,use_gpu, momentum, weight_decay, use_allgather)
+    return cls(optimizer.param_groups, named_parameters,use_gpu, momentum, weight_decay, allreduce)
 
