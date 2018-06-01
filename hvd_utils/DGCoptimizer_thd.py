@@ -245,5 +245,5 @@ def DGCDistributedOptimizer(optimizer, named_parameters=None, use_gpu=True, mome
     # The goal is to override the `step()` method with an allreduce implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DGCOptimizer.__dict__))
-    return cls(optimizer.param_groups, named_parameters,use_gpu, momentum, weight_decay, allreduce)
+    return cls(optimizer.param_groups, named_parameters,use_gpu, momentum, weight_decay, use_allgather)
 

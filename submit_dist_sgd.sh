@@ -2,7 +2,7 @@
 source activate dgc
 
 export BATCH_SIZE=64
-export USE_PRUNING=use_pruning
+export USE_PRUNING=no_use_pruning
 export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync

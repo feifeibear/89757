@@ -1,7 +1,7 @@
 import os
 import torchvision.datasets as datasets
 
-__DATASETS_DEFAULT_PATH = '/home/fangjr/dataset/pytorch'
+__DATASETS_DEFAULT_PATH = './dataset/pytorch'
 #__DATASETS_DEFAULT_PATH = '/data3/ILSVRC2012/'
 
 

@@ -25,7 +25,7 @@ import torch
 
 
 class _DGCOptimizer(torch.optim.Optimizer):
-    def __init__(self, params, named_parameters=None, use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False):
+    def __init__(self, params, named_parameters=None, use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=True):
         super(self.__class__, self).__init__(params)
 
         if named_parameters is not None:
