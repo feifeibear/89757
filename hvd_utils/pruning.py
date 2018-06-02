@@ -129,6 +129,36 @@ def select_top_k_appr(x, pruning_ratio, mask):
     mask = mask.view(x_size)
     return mask, x_val, x_idx
 
+def select_top_k_thdv3(x, pruning_ratio, param = 0.0):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    x_abs = torch.abs(x_flatten)
+    top_k = int(x_len * pruning_ratio) + 1
+    max_val = torch.max(x_abs)
+    mean_val = torch.mean(x_abs)
+    #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
+
+    # roughly select top
+    rough_indices = []
+    param = 0.3
+    threshold = mean_val + param * (max_val - mean_val)
+    x_sparse = x_abs > threshold
+    rough_indices = torch.nonzero(x_sparse).view(-1)
+    rough_val = torch.index_select(x_flatten, 0, rough_indices)
+
+    #print(len(rough_indices), top_k, param, max_val, mean_val)
+    # _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
+    # x_idx = torch.index_select(rough_indices, 0, fine_indices)
+
+    # x_val = torch.index_select(x_flatten, 0, x_idx)
+    return rough_val, rough_indices
+
+
+
 def select_top_k_thdv2(x, pruning_ratio, param = 0.0):
     r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
     x_size = x.size()
@@ -136,9 +166,10 @@ def select_top_k_thdv2(x, pruning_ratio, param = 0.0):
     for dim in x.size():
         x_len *= dim
     x_flatten = x.view(-1)
+    x_abs = torch.abs(x_flatten)
     top_k = int(x_len * pruning_ratio) + 1
-    max_val = torch.max(torch.abs(x))
-    mean_val = torch.mean(torch.abs(x))
+    max_val = torch.max(x_abs)
+    mean_val = torch.mean(x_abs)
     #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
 
     # roughly select top
@@ -147,7 +178,7 @@ def select_top_k_thdv2(x, pruning_ratio, param = 0.0):
     threshold = 0.0
     while(len(rough_indices) < top_k):
         threshold = mean_val + param * (max_val - mean_val)
-        x_sparse = torch.abs(x_flatten) > threshold
+        x_sparse = x_abs > threshold
         rough_indices = torch.nonzero(x_sparse).view(-1)
         param -= 0.1
     rough_val = torch.index_select(x_flatten, 0, rough_indices)

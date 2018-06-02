@@ -18,7 +18,7 @@ from horovod.torch.mpi_ops import allgather, allgather_async, _allgather_async
 from horovod.torch.mpi_ops import broadcast, broadcast_async, broadcast_, broadcast_async_
 from horovod.torch.mpi_ops import poll, synchronize
 import numpy as np
-from .pruning import select_top_k_thd, select_top_k_appr, check_sparsity, select_top_k_thdv2 
+from .pruning import select_top_k_thd, select_top_k_appr, check_sparsity, select_top_k_thdv2, select_top_k_thdv3 
 import horovod.torch as hvd
 
 import torch
@@ -45,7 +45,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = True #False
+        self._debug = False #True 
         self._use_allgather = use_allgather ##True
         #self._use_allgather = False##True
 
@@ -74,8 +74,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                  in sorted(named_parameters)}
         self._compressed_len= {k: torch.zeros(0, dtype=torch.long) for k, v
                                  in sorted(named_parameters)}
-        self._compressed_msg_size = {k: 0 for k, v
-                                 in sorted(named_parameters)}
+        #self._compressed_msg_size = {k: 0 for k, v
+        #                         in sorted(named_parameters)}
         self._v_ref = {k: [] for k, v
                                  in sorted(named_parameters)}
 
@@ -117,7 +117,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #else:
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
-                compressed_val, compressed_idx = select_top_k_thdv2(self._V[name], 0.001)
+                compressed_val, compressed_idx = select_top_k_thdv3(self._V[name], 0.001)
                 local_len = len(compressed_idx)
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
 #                tmp_t = torch.tensor([local_len])
@@ -143,7 +143,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #self._U[name] = self._U[name] * (1 - self._masks[name])
                 self._V[name].mul_(self._masks[name])
                 self._U[name].mul_(self._masks[name])
-                self._compressed_msg_size[name] = len(compressed_idx)
+                #self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
                     compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
                 else:
@@ -207,7 +207,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 if self._debug:
                     diff = torch.sum(self._v_ref[name] - p.grad.data)
                     if( torch.abs(diff) > 1e-6 ):
-                        print("error diff is, ", diff)
+                        print("error diff is, ", diff, name, p.size())
 
         self._handles.clear()
 

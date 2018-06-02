@@ -7,7 +7,7 @@ export NUM_NODE=4
 
 mpirun -np ${NUM_NODE} \
   python ./main_lstm.py \
-  --use_pruning \
+  --no_use_pruning \
   --cuda \
   --batch_size 5 \
   --emsize 50 \
