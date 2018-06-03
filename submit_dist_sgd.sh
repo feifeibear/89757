@@ -1,5 +1,5 @@
 #export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
-source activate dgc
+source activate dgcv2
 
 export BATCH_SIZE=64
 export USE_PRUNING=no_use_pruning
