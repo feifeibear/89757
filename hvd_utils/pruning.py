@@ -130,7 +130,8 @@ def select_top_k_appr(x, pruning_ratio, mask):
     return mask, x_val, x_idx
 
 def select_top_k_thdv3(x, pruning_ratio, param = 0.0):
-    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    r"""a fast function to select top k% abs largest elements with binary search on param, 
+    and assign indices to mask"""
     x_size = x.size()
     x_len = 1;
     for dim in x.size():
@@ -144,12 +145,21 @@ def select_top_k_thdv3(x, pruning_ratio, param = 0.0):
 
     # roughly select top
     rough_indices = []
-    param = 0.3
-    threshold = mean_val + param * (max_val - mean_val)
-    x_sparse = x_abs > threshold
-    rough_indices = torch.nonzero(x_sparse).view(-1)
+    l = 0.0
+    r = 1.0
+    
+    while abs(r - l) > 0.1:
+        mid = l + (r - l)/2
+        threshold = mean_val + mid * (max_val - mean_val)
+        x_sparse = x_abs > threshold
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        N = len(rough_indices)
+        if N < top_k:
+            r = mid
+        else:
+            l = mid 
     rough_val = torch.index_select(x_flatten, 0, rough_indices)
-
+    
     #print(len(rough_indices), top_k, param, max_val, mean_val)
     # _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
     # x_idx = torch.index_select(rough_indices, 0, fine_indices)

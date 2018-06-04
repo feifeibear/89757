@@ -7,9 +7,9 @@ export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
 #export MODEL_NAME=alexnet
-#export MODEL_NAME=vgg16
+export MODEL_NAME=vgg16
 #export MODEL_NAME=cifar10_shallow
-export MODEL_NAME=resnet
+#export MODEL_NAME=resnet
 #export MODEL_NAME=mobilenetv2 #resnet
 #export RESNET_DEPTH=18
 export RESNET_DEPTH=44
@@ -20,7 +20,7 @@ export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
 #export DATASET=imagenet #cifar10
 export DATASET=cifar10
-export NUM_NODE=8
+export NUM_NODE=4
 export USE_CUDA=cuda.
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
