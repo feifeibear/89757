@@ -130,6 +130,11 @@ parser.add_argument('--no_use_nesterov', dest='use_nesterov', action='store_fals
                     help='no debug')
 parser.set_defaults(use_nesterov=False)
 
+parser.add_argument('--use_cluster', dest='use_cluster', action='store_true',
+                    help='synchronize all parameters every sync_interval steps')
+parser.add_argument('--no_use_cluster', dest='use_cluster', action='store_false',
+                    help='synchronize all parameters every sync_interval steps')
+parser.set_defaults(use_sync=False)
 
 
 parser.add_argument('--use_debug', dest='use_debug', action='store_true',
@@ -171,13 +176,16 @@ def main():
     if 'cuda' in args.type:
         torch.cuda.manual_seed(123 + local_rank)
         args.gpus = [int(i) for i in args.gpus.split(',')]
-        #torch.cuda.set_device(args.gpus[0])
-        if(hvd.local_rank() < len(args.gpus)):
-            print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[hvd.local_rank()])
-            torch.cuda.set_device(args.gpus[hvd.local_rank()])
+
+        if args.use_cluster:
+            torch.cuda.set_device(0)
         else:
-            print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[0])
-            torch.cuda.set_device(args.gpus[0])
+            if(hvd.local_rank() < len(args.gpus)):
+                print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[hvd.local_rank()])
+                torch.cuda.set_device(args.gpus[hvd.local_rank()])
+            else:
+                print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[0])
+                torch.cuda.set_device(args.gpus[0])
         cudnn.benchmark = True
     else:
         args.gpus = None
@@ -337,9 +345,9 @@ def main():
                      'Validation Loss {val_loss:.4f} \t'
                      'Validation Prec@1 {val_prec1:.3f} \t'
                      'Validation Prec@5 {val_prec5:.3f} \n'
-                     .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
-                             train_prec1=train_prec1, val_prec1=val_prec1,
-                             train_prec5=train_prec5, val_prec5=val_prec5))
+                     .format(epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
+                             train_prec1=train_prec1.cpu().numpy(), val_prec1=val_prec1.cpu().numpy(),
+                             train_prec5=train_prec5.cpu().numpy(), val_prec5=val_prec5.cpu().numpy()))
 
         #Enable to measure more layers
         idxs = [0]#,2,4,6,7,8,9,10]#[0, 12, 45, 63]
@@ -349,10 +357,9 @@ def main():
 
 
         if(hvd.local_rank() == 0):
-            results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
-                        train_error1=100 - train_prec1, val_error1=100 - val_prec1,
-                        train_error5=100 - train_prec5, val_error5=100 - val_prec5,
-                        **step_dist_epoch)
+            results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
+                        train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
+                        train_error5=100 - train_prec5.cpu().numpy(), val_error5=100 - val_prec5.cpu().numpy())
 
             results.plot(x='epoch', y=['train_loss', 'val_loss'],
                          title='Loss', ylabel='loss')

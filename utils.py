@@ -5,8 +5,8 @@ import logging.config
 import shutil
 import pandas as pd
 from bokeh.io import output_file, save, show
-from bokeh.plotting import figure
-from bokeh.layouts import column
+#from bokeh.plotting import figure
+#from bokeh.layouts import column
 #from bokeh.charts import Line, defaults
 #from bkcharts.charts import Line, defaults
 from numpy.random import choice
@@ -52,8 +52,8 @@ class ResultsLog(object):
             if os.path.isfile(self.plot_path):
                 os.remove(self.plot_path)
             output_file(self.plot_path, title=title)
-            plot = column(*self.figures)
-            save(plot)
+            #plot = column(*self.figures)
+            #save(plot)
             self.figures = []
         self.results.to_csv(self.path, index=False, index_label=False)
 
@@ -63,9 +63,10 @@ class ResultsLog(object):
             self.results.read_csv(path)
 
     def show(self):
-        if len(self.figures) > 0:
-            plot = column(*self.figures)
-            show(plot)
+        pass
+        #if len(self.figures) > 0:
+        #    plot = column(*self.figures)
+        #    show(plot)
 
     def plot(self, *kargs, **kwargs):
         pass
@@ -73,9 +74,10 @@ class ResultsLog(object):
         #self.figures.append(line)
 
     def image(self, *kargs, **kwargs):
-        fig = figure()
-        fig.image(*kargs, **kwargs)
-        self.figures.append(fig)
+        pass
+        #fig = figure()
+        #fig.image(*kargs, **kwargs)
+        #self.figures.append(fig)
 
 
 def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', save_all=False):
