@@ -165,7 +165,6 @@ def select_top_k_thd_mean(x, pruning_ratio, param = 0.0):
     rough_negative_val = torch.index_select(x_flatten, 0, rough_negative_indices)
     val_positive_mean = torch.mean(rough_positive_val)
     val_negative_mean = torch.mean(rough_negative_val)
-    
     #print(len(rough_indices), top_k, param, max_val, mean_val)
     # _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
     # x_idx = torch.index_select(rough_indices, 0, fine_indices)

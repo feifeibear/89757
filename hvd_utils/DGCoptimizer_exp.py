@@ -147,9 +147,15 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self._U[name].mul_(self._masks[name])
                 #self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
-                    compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'), torch.tensor([local_mean]).type('torch.cuda.FloatTensor'), compressed_idx.type('torch.cuda.FloatTensor')])
+                    compressed_msg = torch.cat(\
+                            [torch.tensor([len(compressed_p_idx)]).type('torch.cuda.FloatTensor'), \
+                            torch.tensor([len(compressed_n_idx)]).type('torch.cuda.FloatTensor'), \
+                            torch.tensor([local_p_mean]).type('torch.cuda.FloatTensor'), \
+                            torch.tensor([local_n_mean]).type('torch.cuda.FloatTensor'), \
+                            compressed_p_idx.type('torch.cuda.FloatTensor'), \
+                            compressed_n_idx.type('torch.cuda.FloatTensor')])
                 else:
-                    compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.FloatTensor'), local_mean, compressed_idx.type('torch.FloatTensor')])
+                    pass
 
                 handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 #compressed_msg = torch.randn(100).cuda()
@@ -189,23 +195,24 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 offset = 0
                 for node_idx in range(hvd.size()):
                     if self._use_gpu:
-                        msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
+                        msg_p_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
                         offset += 1
-                        local_mean = self._compressed_msg[name][offset]
+                        msg_n_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
+                        offset += 1
+                        local_p_mean = self._compressed_msg[name][offset]
+                        offset += 1
+                        local_n_mean = self._compressed_msg[name][offset]
                         offset += 1
                         p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_size].type('torch.cuda.LongTensor')] += \
-                                local_mean
-                        offset += msg_size;
+                                offset + msg_p_size].type('torch.cuda.LongTensor')] += \
+                                local_p_mean
+                        offset += msg_p_size;
+                        p_flatten[self._compressed_msg[name][ offset: \
+                                offset + msg_n_size].type('torch.cuda.LongTensor')] += \
+                                local_p_mean
+                        offset += msg_n_size;
                     else:
-                        msg_size = self._compressed_msg[name][offset].type('torch.LongTensor')
-                        offset += 1
-                        local_mean = self._compressed_msg[name][offset]
-                        offset += 1
-                        p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_size].type('torch.LongTensor')] += \
-                                local_mean
-                        offset += msg_size;
+                        pass
                 p.grad.data = p.grad.data.view(g_size)
                 if self._debug:
                     diff = torch.sum(self._v_ref[name] - p.grad.data)

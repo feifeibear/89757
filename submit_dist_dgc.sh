@@ -20,12 +20,12 @@ export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
 #export DATASET=imagenet #cifar10
 export DATASET=cifar10
-export NUM_NODE=4
+export NUM_NODE=1
 export USE_CUDA=cuda.
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --dataset ${DATASET} \
-  --gpus 3,4,5,6,7,0,1,2 \
+  --gpus 4,0,1,2 \
   --type torch.${USE_CUDA}FloatTensor \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \
