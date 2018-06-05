@@ -427,13 +427,11 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             optimizer.zero_grad()
             loss.backward()
 
-            for param_group in optimizer.param_groups:
-                print("pruning time, ", param_group['pruning_time'])
-                param_group['pruning_time'] = 0.0
 
             # Master
             if args.use_pruning:
-                pass
+                pruning_time.update(optimizer.pruning_time)
+                optimizer.pruning_time = 0.0
             else:
                 # idx = 0
                 # for p in list(model.parameters()):

@@ -87,7 +87,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._grad_accs = []
 
         #for timer
-        param_group['pruning_time'] = 0.0
+        self.pruning_time = 0.0
 
         if size() > 1:
             self._register_hooks()
@@ -168,7 +168,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
                 torch.cuda.synchronize()
                 end_time = time.time()
-                param_groups['pruning_time'] += end_time - begin_time
+                self.pruning_time += end_time - begin_time
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
@@ -189,6 +189,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         for p in self._handles:
             handle = self._handles[p]
             synchronize(handle)
+            torch.cuda.synchronize()
+            begin_time =  time.time()
             p_size = np.prod(p.size())
             if self._use_allgather and p_size > 1024:
                 #fjr decompress
@@ -219,6 +221,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     diff = torch.sum(self._v_ref[name] - p.grad.data)
                     if( torch.abs(diff) > 1e-6 ):
                         print("error diff is, ", diff, name, p.size())
+                torch.cuda.synchronize()
+                end_time = time.time()
+                self.pruning_time += end_time - begin_time
 
         self._handles.clear()
 
