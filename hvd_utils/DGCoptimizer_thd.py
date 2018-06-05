@@ -86,6 +86,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._grad_accs = []
 
         self.pruning_time = 0.0
+        self.select_time = 0.0
 
         if size() > 1:
             self._register_hooks()
@@ -125,8 +126,13 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #else:
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+                torch.cuda.synchronize()
+                begin_select_time =  time.time()
                 compressed_val, compressed_idx = select_top_k_thdv3(self._V[name], 0.001)
                 local_len = len(compressed_idx)
+                torch.cuda.synchronize()
+                end_select_time =  time.time()
+                self.select_time += end_select_time - begin_select_time
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
 #                tmp_t = torch.tensor([local_len])
                 # print("len list, ", global_len_list)

@@ -20,7 +20,7 @@ export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
 #export DATASET=imagenet #cifar10
 export DATASET=cifar10
-export NUM_NODE=4
+export NUM_NODE=1
 export USE_CUDA=cuda.
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \

@@ -2,6 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+from datetime import datetime
+
 from horovod.common import init
 from horovod.common import size
 from horovod.common import local_size
@@ -79,6 +82,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
 
+        self.pruning_time = 0.0
+        self.select_time = 0.0
+
         if size() > 1:
             self._register_hooks()
 
@@ -97,6 +103,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             assert not p.grad.requires_grad
             name = self._parameter_names.get(p)
             p_size = np.prod(p.size())
+            torch.cuda.synchronize()
+            begin_time =  time.time()
             if self._use_allgather and p_size > 1024:
                 # fjr compress grad
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
@@ -109,10 +117,16 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     self._V[name] = self._V[name] + self._U[name]
                 compressed_val = []
                 compressed_idx = []
+                torch.cuda.synchronize()
+                begin_select_time =  time.time()
                 if p_size < 1000:
                     self._masks[name], compressed_val, compressed_idx = select_top_k_appr(self._V[name], 0.001, self._masks[name])
                 else:
                     self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+                torch.cuda.synchronize()
+                end_select_time =  time.time()
+                self.select_time += end_select_time - begin_select_time
+
                 if self._debug:
                     self._v_ref[name] = self._V[name] * self._masks[name]
                     allreduce_(self._v_ref[name], average = False)
@@ -143,12 +157,18 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 handle = allreduce_async_(p.grad.data, average=True, name=name)
                 self._handles[p] = handle
 
+            torch.cuda.synchronize()
+            end_time = time.time()
+            self.pruning_time += end_time - begin_time
+
         return hook
 
     def synchronize(self):
         for p in self._handles:
             handle = self._handles[p]
             synchronize(handle)
+            begin_time = time.time()
+            p_size = np.prod(p.size())
             p_size = np.prod(p.size())
             if self._use_allgather and p_size > 1024:
                 #fjr decompress
@@ -176,6 +196,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 p.grad.data = p.grad.data.view(g_size)
                 if self._debug:
                     print("diff : ", torch.sum(self._v_ref[name] - p.grad.data))
+
+            torch.cuda.synchronize()
+            end_time = time.time()
+            self.pruning_time += end_time - begin_time
 
         self._handles.clear()
 

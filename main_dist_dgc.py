@@ -434,7 +434,9 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             # Master
             if args.use_pruning:
                 pruning_time.update(optimizer.pruning_time)
+                select_time.update(optimizer.select_time)
                 optimizer.pruning_time = 0.0
+                optimizer.select_time = 0.0
             else:
                 # idx = 0
                 # for p in list(model.parameters()):
