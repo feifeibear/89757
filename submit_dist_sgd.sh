@@ -1,5 +1,5 @@
 #export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
-source activate dgcv2
+source activate dgc
 
 export BATCH_SIZE=64
 export USE_PRUNING=no_use_pruning
@@ -7,7 +7,7 @@ export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
 #export MODEL_NAME=alexnet
-export MODEL_NAME=vgg16
+export MODEL_NAME=widenet
 #export MODEL_NAME=cifar10_shallow
 #export MODEL_NAME=resnet
 #export MODEL_NAME=mobilenetv2 #resnet

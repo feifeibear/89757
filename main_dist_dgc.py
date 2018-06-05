@@ -143,21 +143,8 @@ parser.add_argument('--no_use_debug', dest='use_debug', action='store_false',
                     help='no debug')
 parser.set_defaults(use_debug=False)
 
-parser.add_argument('--prunning_mode', '-pm', default=0, type=int,
+parser.add_argument('--pruning_mode', '-pm', default=0, type=int,
                     help='prune mode')
-
-
-if args.pruning_mode == 0:
-    from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
-elif args.pruning_mode == 1:
-    from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
-elif args.pruning_mode == 2:
-    from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
-else
-    print("pruning_mode should be set correctly")
-    exit(0)
-
-
 def main():
     hvd.init()
     size = hvd.size()
@@ -167,6 +154,22 @@ def main():
     global args, best_prec1
     best_prec1 = 0
     args = parser.parse_args()
+
+    if args.pruning_mode == 0:
+        print("exp mode")
+        from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
+    elif args.pruning_mode == 1:
+        print("thd mode")
+        from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
+    elif args.pruning_mode == 2:
+        print("topk mode")
+        from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
+    else:
+        print("pruning_mode should be set correctly")
+        exit(0)
+
+
+
 
     if args.evaluate:
         args.results_dir = '/tmp'
