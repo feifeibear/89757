@@ -23,10 +23,6 @@ from math import sqrt
 import numpy as np
 from prune_utils.pruning import select_top_k, select_top_k_appr, check_sparsity
 import horovod.torch as hvd
-if 0:
-    from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
-else:
-    from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
 from horovod.torch.mpi_ops import poll, synchronize
 
 model_names = sorted(name for name in models.__dict__
@@ -140,12 +136,26 @@ parser.add_argument('--no_use_cluster', dest='use_cluster', action='store_false'
 parser.set_defaults(use_sync=False)
 
 
+
 parser.add_argument('--use_debug', dest='use_debug', action='store_true',
                     help='to debug')
 parser.add_argument('--no_use_debug', dest='use_debug', action='store_false',
                     help='no debug')
 parser.set_defaults(use_debug=False)
 
+parser.add_argument('--prunning_mode', '-pm', default=0, type=int,
+                    help='prune mode')
+
+
+if args.pruning_mode == 0:
+    from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
+elif args.pruning_mode == 1:
+    from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
+elif args.pruning_mode == 2:
+    from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
+else
+    print("pruning_mode should be set correctly")
+    exit(0)
 
 
 def main():
