@@ -2,7 +2,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import math
 
-__all__ = ['wide_WResNet']
+__all__ = ['widenet']
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -196,7 +196,7 @@ class WResNet_cifar10(WResNet):
         }
 
 
-def wide_WResNet(**kwargs):
+def widenet(**kwargs):
     num_classes, depth, dataset = map(
         kwargs.get, ['num_classes', 'depth', 'dataset'])
     if dataset == 'imagenet':
