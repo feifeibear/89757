@@ -129,6 +129,53 @@ def select_top_k_appr(x, pruning_ratio, mask):
     mask = mask.view(x_size)
     return mask, x_val, x_idx
 
+def select_top_k_thd_mean(x, pruning_ratio, param = 0.0):
+    r"""a fast function to select top k% abs largest elements with binary search on param, 
+    and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    x_abs = torch.abs(x_flatten)
+    top_k = int(x_len * pruning_ratio) + 1
+    max_val = torch.max(x_abs)
+    mean_val = torch.mean(x_abs)
+    #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
+
+    # roughly select top
+    rough_indices = []
+    threshold = 0.0
+    l = 0.0
+    r = 1.0
+    
+    while abs(r - l) > 0.1:
+        mid = l + (r - l)/2
+        threshold = mean_val + mid * (max_val - mean_val)
+        x_sparse = x_abs > threshold
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        N = len(rough_indices)
+        if N < top_k:
+            r = mid
+        else:
+            l = mid 
+    rough_positive_indices = torch.nonzero(x_flatten > threshold).view(-1)
+    rough_negative_indices = torch.nonzero(x_flatten < -threshold).view(-1)
+    rough_positive_val = torch.index_select(x_flatten, 0, rough_positive_indices)
+    rough_negative_val = torch.index_select(x_flatten, 0, rough_negative_indices)
+    val_positive_mean = torch.mean(rough_positive_val)
+    val_negative_mean = torch.mean(rough_negative_val)
+    
+    #print(len(rough_indices), top_k, param, max_val, mean_val)
+    # _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
+    # x_idx = torch.index_select(rough_indices, 0, fine_indices)
+
+    # x_val = torch.index_select(x_flatten, 0, x_idx)
+    return val_positive_mean, val_negative_mean, rough_posistive_val, rough_negative_val 
+
+
+
+
 def select_top_k_thdv3(x, pruning_ratio, param = 0.0):
     r"""a fast function to select top k% abs largest elements with binary search on param, 
     and assign indices to mask"""

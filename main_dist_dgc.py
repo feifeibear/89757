@@ -23,7 +23,7 @@ from math import sqrt
 import numpy as np
 from prune_utils.pruning import select_top_k, select_top_k_appr, check_sparsity
 import horovod.torch as hvd
-from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
+from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
 from horovod.torch.mpi_ops import poll, synchronize
 
 model_names = sorted(name for name in models.__dict__
