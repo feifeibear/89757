@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import time
 from datetime import datetime
-from utils import *
 
 from horovod.common import init
 from horovod.common import size

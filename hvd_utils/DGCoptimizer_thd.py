@@ -2,6 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+from datetime import datetime
+
 from horovod.common import init
 from horovod.common import size
 from horovod.common import local_size
@@ -82,6 +85,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
 
+        self.pruning_time = 0.0
+
         if size() > 1:
             self._register_hooks()
 
@@ -100,6 +105,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
             assert not p.grad.requires_grad
             name = self._parameter_names.get(p)
             p_size = np.prod(p.size())
+            torch.cuda.synchronize()
+            begin_time =  time.time()
+
             if self._use_allgather and p_size > 1024:
                 # fjr compress grad
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
@@ -152,6 +160,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 #compressed_msg = torch.randn(100).cuda()
                 self._handles[p] = handle
+
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
@@ -165,6 +174,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 handle = allreduce_async_(p.grad.data, average=True, name=name)
                 self._handles[p] = handle
+            torch.cuda.synchronize()
+            end_time = time.time()
+            self.pruning_time += end_time - begin_time
 
         return hook
 
@@ -172,6 +184,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         for p in self._handles:
             handle = self._handles[p]
             synchronize(handle)
+            torch.cuda.synchronize()
+            begin_time = time.time()
             p_size = np.prod(p.size())
             if self._use_allgather and p_size > 1024:
                 #fjr decompress
@@ -208,6 +222,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     diff = torch.sum(self._v_ref[name] - p.grad.data)
                     if( torch.abs(diff) > 1e-6 ):
                         print("error diff is, ", diff, name, p.size())
+
+            torch.cuda.synchronize()
+            end_time = time.time()
+            self.pruning_time += end_time - begin_time
 
         self._handles.clear()
 
