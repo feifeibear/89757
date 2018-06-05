@@ -172,7 +172,7 @@ def select_top_k_thd_mean(x, pruning_ratio, param = 0.0):
         flag_pos = True
 
     rough_negative_indices = torch.nonzero(x_flatten < -threshold).view(-1)
-    if len(rough_negative_val) > 0:
+    if len(rough_negative_indices) > 0:
         rough_negative_val = torch.index_select(x_flatten, 0, rough_negative_indices)
         val_negative_mean = torch.mean(rough_negative_val)
         flag_neg = True

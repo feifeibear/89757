@@ -118,7 +118,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                 local_mean, compressed_idx = select_top_k_thd_mean(self._V[name], 0.001)
-                local_len = len(compressed_p_idx)
+                local_len = len(compressed_idx)
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
 #                tmp_t = torch.tensor([local_len])
                 # print("len list, ", global_len_list)

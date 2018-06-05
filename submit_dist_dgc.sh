@@ -1,5 +1,5 @@
 #export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
-#source activate dgc
+source activate dgc
 
 export BATCH_SIZE=64
 export USE_PRUNING=use_pruning
@@ -20,7 +20,7 @@ export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
 #export DATASET=imagenet #cifar10
 export DATASET=cifar10
-export NUM_NODE=1
+export NUM_NODE=4
 export USE_CUDA=cuda.
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
@@ -43,4 +43,4 @@ mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --save dist_${NUM_NODE}_${DATASET}_${MODEL_NAME}${RESNET_DEPTH}_${BATCH_SIZE}_${USE_PRUNING}_${USE_RESIDUE_ACC}_${USE_WARMUP}_${USE_SYNC}_${USE_NES}_${USE_CUDA}_thd
 
 
-#source deactivate
+source deactivate
