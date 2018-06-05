@@ -2,6 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+from datetime import datetime
+from utils import *
+
 from horovod.common import init
 from horovod.common import size
 from horovod.common import local_size
@@ -82,6 +86,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
 
+        #for timer
+        param_group['pruning_time'] = 0.0
+
         if size() > 1:
             self._register_hooks()
 
@@ -112,11 +119,14 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     self._V[name] = self._V[name] + self._U[name]
                 compressed_val = []
                 compressed_idx = []
+                torch.cuda.synchronize()
+                begin_time =  time.time()
                 #if p_size < 1000:
                 #    self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                 #else:
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
+
                 local_mean, compressed_idx = select_top_k_thd_mean(self._V[name], 0.001)
                 local_len = len(compressed_idx)
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
@@ -155,6 +165,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 #compressed_msg = torch.randn(100).cuda()
                 self._handles[p] = handle
+
+                torch.cuda.synchronize()
+                end_time = time.time()
+                param_groups['pruning_time'] += end_time - begin_time
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
