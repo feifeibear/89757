@@ -139,6 +139,7 @@ def select_top_k_thd_mean(x, pruning_ratio, param = 0.0):
     x_flatten = x.view(-1)
     x_abs = torch.abs(x_flatten)
     top_k = int(x_len * pruning_ratio) + 1
+    top_k = top_k * 2
     max_val = torch.max(x_abs)
     mean_val = torch.mean(x_abs)
     #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
@@ -148,7 +149,6 @@ def select_top_k_thd_mean(x, pruning_ratio, param = 0.0):
     threshold = 0.0
     l = 0.0
     r = 1.0
-    
     while abs(r - l) > 0.1:
         mid = l + (r - l)/2
         threshold = mean_val + mid * (max_val - mean_val)
@@ -158,19 +158,36 @@ def select_top_k_thd_mean(x, pruning_ratio, param = 0.0):
         if N < top_k:
             r = mid
         else:
-            l = mid 
+            l = mid
+
     rough_positive_indices = torch.nonzero(x_flatten > threshold).view(-1)
     rough_negative_indices = torch.nonzero(x_flatten < -threshold).view(-1)
-    rough_positive_val = torch.index_select(x_flatten, 0, rough_positive_indices)
-    rough_negative_val = torch.index_select(x_flatten, 0, rough_negative_indices)
-    val_positive_mean = torch.mean(rough_positive_val)
-    val_negative_mean = torch.mean(rough_negative_val)
-    #print(len(rough_indices), top_k, param, max_val, mean_val)
-    # _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
-    # x_idx = torch.index_select(rough_indices, 0, fine_indices)
+    val_positive_mean = 0.0
+    val_negative_mean = 0.0
+    flag_pos = False
+    flag_neg = False
+    if len(rough_positive_indices) > 0:
+        rough_positive_val = torch.index_select(x_flatten, 0, rough_positive_indices)
+        val_positive_mean = torch.mean(rough_positive_val)
+        flag_pos = True
 
-    # x_val = torch.index_select(x_flatten, 0, x_idx)
-    return val_positive_mean, val_negative_mean, rough_posistive_val, rough_negative_val 
+    rough_negative_indices = torch.nonzero(x_flatten < -threshold).view(-1)
+    if len(rough_negative_val) > 0:
+        rough_negative_val = torch.index_select(x_flatten, 0, rough_negative_indices)
+        val_negative_mean = torch.mean(rough_negative_val)
+        flag_neg = True
+
+    if flag_pos and flag_neg:
+        if val_positive_mean > -val_negative_mean:
+            return val_positive_mean, rough_positive_indices
+        else:
+            return val_negative_mean, rough_negative_indices
+    elif flag_pos and not flag_neg:
+        return val_positive_mean, rough_positive_indices
+    else:
+        return val_negative_mean, rough_negative_indices
+
+
 
 
 

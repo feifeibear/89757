@@ -117,9 +117,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #else:
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
-                local_p_mean, local_n_mean, compressed_p_idx, compressed_n_idx = select_top_k_thd_mean(self._V[name], 0.001)
-                local_p_len = len(compressed_p_idx)
-                local_n_len = len(compressed_n_idx)
+                local_mean, compressed_idx = select_top_k_thd_mean(self._V[name], 0.001)
+                local_len = len(compressed_p_idx)
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
 #                tmp_t = torch.tensor([local_len])
                 # print("len list, ", global_len_list)
@@ -130,8 +129,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 masks_size = self._masks[name].size()
                 self._masks[name].zero_()
                 self._masks[name] = self._masks[name].view(-1)
-                self._masks[name][compressed_p_idx] = 1.0
-                self._masks[name][compressed_n_idx] = 1.0
+                self._masks[name][compressed_idx] = 1.0
 
                 self._masks[name] = 1.0 - self._masks[name]
                 self._masks[name] = self._masks[name].view(masks_size)
@@ -148,12 +146,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
                     compressed_msg = torch.cat(\
-                            [torch.tensor([len(compressed_p_idx)]).type('torch.cuda.FloatTensor'), \
-                            torch.tensor([len(compressed_n_idx)]).type('torch.cuda.FloatTensor'), \
-                            torch.tensor([local_p_mean]).type('torch.cuda.FloatTensor'), \
-                            torch.tensor([local_n_mean]).type('torch.cuda.FloatTensor'), \
-                            compressed_p_idx.type('torch.cuda.FloatTensor'), \
-                            compressed_n_idx.type('torch.cuda.FloatTensor')])
+                            [torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'), \
+                            torch.tensor([local_mean]).type('torch.cuda.FloatTensor'), \
+                            compressed_idx.type('torch.cuda.FloatTensor')])
                 else:
                     pass
 
@@ -195,22 +190,14 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 offset = 0
                 for node_idx in range(hvd.size()):
                     if self._use_gpu:
-                        msg_p_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
+                        msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
                         offset += 1
-                        msg_n_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
-                        offset += 1
-                        local_p_mean = self._compressed_msg[name][offset]
-                        offset += 1
-                        local_n_mean = self._compressed_msg[name][offset]
+                        local_mean = self._compressed_msg[name][offset]
                         offset += 1
                         p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_p_size].type('torch.cuda.LongTensor')] += \
-                                local_p_mean
-                        offset += msg_p_size;
-                        p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_n_size].type('torch.cuda.LongTensor')] += \
-                                local_p_mean
-                        offset += msg_n_size;
+                                offset + msg_size].type('torch.cuda.LongTensor')] += \
+                                local_mean
+                        offset += msg_size;
                     else:
                         pass
                 p.grad.data = p.grad.data.view(g_size)
