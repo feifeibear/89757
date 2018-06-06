@@ -385,9 +385,9 @@ def prune_perc_sample(x, perc):
 if __name__ == '__main__':
     torch.manual_seed(123)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    x = torch.randn(33278, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(33278, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    #x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(14000000,) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     x = x.cuda()
     x_flatten = x.view(-1)
@@ -405,19 +405,30 @@ if __name__ == '__main__':
     mask1 = torch.zeros(x_len).cuda()
     mask2 = torch.zeros(x_len).cuda()
 
+    torch.cuda.synchronize()
+    start = time()
+    for i in range(100):
+        val, idx = select_top_k_thdv3(x, ratio)
+    torch.cuda.synchronize()
+    stop = time()
+    print("thresholdv3 run time : ", str((stop-start)/100), "s")
+
+
+    torch.cuda.synchronize()
     start = time()
     for i in range(100):
         mask1, val, idx = select_top_k_thd(x, ratio, mask1)
     torch.cuda.synchronize()
     stop = time()
-    print("prune_perc function run time : ", str((stop-start)/100), "s")
+    print("threshold run time : ", str((stop-start)/100), "s")
 
+    torch.cuda.synchronize()
     start = time()
     for i in range(100):
         mask2, _, idx= select_top_k_appr(x, ratio, mask2)
     torch.cuda.synchronize()
     stop = time()
-    print("select_top_k_appr function run time : ", str((stop-start)/100), "s")
+    print("topk run time : ", str((stop-start)/100), "s")
 
     print("Time transfer in 10Gps Ethernet : ", str(x_len * 8 / (1e9/8)), "s")
     diff = mask1 - mask2
