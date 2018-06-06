@@ -170,7 +170,6 @@ def main():
 
 
 
-
     if args.evaluate:
         args.results_dir = '/tmp'
     if args.save is '':
