@@ -162,6 +162,9 @@ def main():
         print("thd mode")
         from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
     elif args.pruning_mode == 2:
+        print("chunck mode")
+        from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
+    elif args.pruning_mode == 3:
         print("topk mode")
         from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
     else:
