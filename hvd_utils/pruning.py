@@ -210,7 +210,6 @@ def select_top_k_thdv3(x, pruning_ratio, param = 0.0):
     rough_indices = []
     l = 0.0
     r = 1.0
-    
     while abs(r - l) > 0.1:
         mid = l + (r - l)/2
         threshold = mean_val + mid * (max_val - mean_val)
@@ -408,10 +407,23 @@ if __name__ == '__main__':
     torch.cuda.synchronize()
     start = time()
     for i in range(100):
+        val, idx = select_top_k_thd_mean(x, ratio)
+    torch.cuda.synchronize()
+    stop = time()
+    print("mean run time : ", str((stop-start)/100), "s")
+    print("sparsity is, ", len(idx) / x_len)
+
+
+
+
+    torch.cuda.synchronize()
+    start = time()
+    for i in range(100):
         val, idx = select_top_k_thdv3(x, ratio)
     torch.cuda.synchronize()
     stop = time()
     print("thresholdv3 run time : ", str((stop-start)/100), "s")
+    print("sparsity is, ", len(val) / x_len)
 
 
     torch.cuda.synchronize()
@@ -461,44 +473,3 @@ if __name__ == '__main__':
     stop = time()
     print("top-k + clear time : ", str((stop-start)/100), "s")
 
-
-
-
-    # start = time()
-    # for i in range(100):
-    #     prune_perc_sample(x, 0.001)
-    # stop = time()
-    # print(str(stop-start), "s")
-
-    # start = time()
-    # for i in range(100):
-    #     prune_perc(x, 0.001)
-    # stop = time()
-    # print(str(stop-start), "s")
-
-    # thr = kth(x, 5, 1.0)
-    # mask = (x.abs() >= thr).type(x.type())
-    # nmask = (x.abs() < thr).type(x.type())
-    # print(mask)
-    # print(nmask)
-    # mask = prune_perc(x, 0.2)
-    # offset = 0
-    # for i in range(20):
-    #     mask = struct_pruning(x, 0.2, offset)
-    #     x_len = np.prod(x.size())
-    #     slice_size = int(x_len * 0.2) + 1
-    #     if offset + slice_size > x_len:
-    #         offset = slice_size - (x_len - offset)
-    #     else:
-    #         offset += slice_size
-    #     print(mask)
-
-
-
-    # print(x)
-    # print(x * mask)
-    # print(x * (1. - mask))
-
-    # sx = (x * (1. - mask))
-    # print("sparse ", check_sparsity(x))
-    # print("sparse ", check_sparsity(x * mask))
