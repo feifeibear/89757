@@ -110,42 +110,15 @@ class _DGCOptimizer(torch.optim.Optimizer):
             begin_time =  time.time()
 
             if self._use_allgather and p_size > 1024:
-                weight_decay = self._weight_decay #group['weight_decay']
-                momentum = self._momentum #group['momentum']
-                dampening = 0.0 #group['dampening']
-                nesterov = False #group['nesterov']
-                d_p = p.grad.data
-                if weight_decay != 0:
-                    d_p.add_(weight_decay, p.data)
-                if momentum != 0:
-                    param_state = self.state[p]
-                    if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
-                        buf.mul_(momentum).add_(d_p)
-                    else:
-                        buf = param_state['momentum_buffer']
-                        buf.mul_(momentum).add_(1 - dampening, d_p)
-                    #TODO
-                    # if nesterov:
-                    #     d_p = d_p.add(momentum, buf)
-                    # else:
-                    #     d_p = buf
-                if 'residue_buffer' not in param_state:
-                    rsd = param_state['residue_buffer'] = torch.zeros_like(p.data)
-                    rsd.add_(param_state['momentum_buffer'])
-                else:
-                    rsd = param_state['residue_buffer']
-                    rsd.add_(param_state['momentum_buffer'])
-
                 # fjr compress grad
-                # p.grad.data.add_(torch.mul(p.data, self._weight_decay))
-                # p.grad.data.div_(hvd.size())
-                # if self._use_nesterov:
-                #     self._U[name] = torch.mul(torch.add(self._U[name], p.grad.data), self._momentum)
-                #     self._V[name] = self._V[name] + self._U[name] + p.grad.data
-                # else:
-                #     self._U[name] = self._momentum * self._U[name] + p.grad.data
-                #     self._V[name] = self._V[name] + self._U[name]
+                p.grad.data.add_(torch.mul(p.data, self._weight_decay))
+                p.grad.data.div_(hvd.size())
+                if self._use_nesterov:
+                    self._U[name] = torch.mul(torch.add(self._U[name], p.grad.data), self._momentum)
+                    self._V[name] = self._V[name] + self._U[name] + p.grad.data
+                else:
+                    self._U[name] = self._momentum * self._U[name] + p.grad.data
+                    self._V[name] = self._V[name] + self._U[name]
                 compressed_val = []
                 compressed_idx = []
                 #if p_size < 1000:
@@ -155,7 +128,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     #self._masks[name], compressed_val, compressed_idx = select_top_k_thd(self._V[name], 0.001, self._masks[name])
                 torch.cuda.synchronize()
                 begin_select_time =  time.time()
-                compressed_val, compressed_idx = select_top_k_thdv3(param_state['residue_buffer'], 0.001)
+                compressed_val, compressed_idx = select_top_k_thdv3(self._V[name], 0.001)
                 local_len = len(compressed_idx)
                 torch.cuda.synchronize()
                 end_select_time =  time.time()
@@ -167,7 +140,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 ##print("local_len, ", local_len)
                 #compressed_val = compressed_val[0:local_len]
                 #compressed_idx = compressed_idx[0:local_len]
-
                 masks_size = self._masks[name].size()
                 self._masks[name].zero_()
                 self._masks[name] = self._masks[name].view(-1)
@@ -183,8 +155,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
                 #self._V[name] = self._V[name] * (1 - self._masks[name])
                 #self._U[name] = self._U[name] * (1 - self._masks[name])
-                param_state['residue_buffer'].mul_(self._masks[name])
-                param_state['momentum_buffer'].mul_(self._masks[name])
+                self._V[name].mul_(self._masks[name])
+                self._U[name].mul_(self._masks[name])
                 #self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
                     compressed_msg = torch.cat([\
