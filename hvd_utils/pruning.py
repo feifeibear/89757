@@ -210,7 +210,6 @@ def select_top_k_thdv3(x, pruning_ratio, param = 0.0):
     rough_indices = []
     l = 0.0
     r = 1.0
-    
     while abs(r - l) > 0.1:
         mid = l + (r - l)/2
         threshold = mean_val + mid * (max_val - mean_val)
@@ -385,9 +384,9 @@ def prune_perc_sample(x, perc):
 if __name__ == '__main__':
     torch.manual_seed(123)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    x = torch.randn(33278, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(33278, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    #x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(14000000,) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     x = x.cuda()
     x_flatten = x.view(-1)
@@ -405,19 +404,43 @@ if __name__ == '__main__':
     mask1 = torch.zeros(x_len).cuda()
     mask2 = torch.zeros(x_len).cuda()
 
+    torch.cuda.synchronize()
+    start = time()
+    for i in range(100):
+        val, idx = select_top_k_thd_mean(x, ratio)
+    torch.cuda.synchronize()
+    stop = time()
+    print("mean run time : ", str((stop-start)/100), "s")
+    print("sparsity is, ", len(idx) / x_len)
+
+
+
+
+    torch.cuda.synchronize()
+    start = time()
+    for i in range(100):
+        val, idx = select_top_k_thdv3(x, ratio)
+    torch.cuda.synchronize()
+    stop = time()
+    print("thresholdv3 run time : ", str((stop-start)/100), "s")
+    print("sparsity is, ", len(val) / x_len)
+
+
+    torch.cuda.synchronize()
     start = time()
     for i in range(100):
         mask1, val, idx = select_top_k_thd(x, ratio, mask1)
     torch.cuda.synchronize()
     stop = time()
-    print("prune_perc function run time : ", str((stop-start)/100), "s")
+    print("threshold run time : ", str((stop-start)/100), "s")
 
+    torch.cuda.synchronize()
     start = time()
     for i in range(100):
         mask2, _, idx= select_top_k_appr(x, ratio, mask2)
     torch.cuda.synchronize()
     stop = time()
-    print("select_top_k_appr function run time : ", str((stop-start)/100), "s")
+    print("topk run time : ", str((stop-start)/100), "s")
 
     print("Time transfer in 10Gps Ethernet : ", str(x_len * 8 / (1e9/8)), "s")
     diff = mask1 - mask2
@@ -450,44 +473,3 @@ if __name__ == '__main__':
     stop = time()
     print("top-k + clear time : ", str((stop-start)/100), "s")
 
-
-
-
-    # start = time()
-    # for i in range(100):
-    #     prune_perc_sample(x, 0.001)
-    # stop = time()
-    # print(str(stop-start), "s")
-
-    # start = time()
-    # for i in range(100):
-    #     prune_perc(x, 0.001)
-    # stop = time()
-    # print(str(stop-start), "s")
-
-    # thr = kth(x, 5, 1.0)
-    # mask = (x.abs() >= thr).type(x.type())
-    # nmask = (x.abs() < thr).type(x.type())
-    # print(mask)
-    # print(nmask)
-    # mask = prune_perc(x, 0.2)
-    # offset = 0
-    # for i in range(20):
-    #     mask = struct_pruning(x, 0.2, offset)
-    #     x_len = np.prod(x.size())
-    #     slice_size = int(x_len * 0.2) + 1
-    #     if offset + slice_size > x_len:
-    #         offset = slice_size - (x_len - offset)
-    #     else:
-    #         offset += slice_size
-    #     print(mask)
-
-
-
-    # print(x)
-    # print(x * mask)
-    # print(x * (1. - mask))
-
-    # sx = (x * (1. - mask))
-    # print("sparse ", check_sparsity(x))
-    # print("sparse ", check_sparsity(x * mask))

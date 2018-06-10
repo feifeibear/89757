@@ -107,7 +107,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
             assert not p.grad.requires_grad
             name = self._parameter_names.get(p)
             p_size = np.prod(p.size())
-
             torch.cuda.synchronize()
             begin_time =  time.time()
             if self._use_allgather and p_size > 1024:
@@ -132,9 +131,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 begin_select_time =  time.time()
                 local_mean, compressed_idx = select_top_k_thd_mean(self._V[name], 0.001)
                 torch.cuda.synchronize()
-                end_select_time =  time.time()
-                self.select_time += end_select_time - begin_select_time
-                local_len = len(compressed_idx)
+                end_select_time = time.time()
+                self.select_time += end_select_time - begin_select_time 
+
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
 #                tmp_t = torch.tensor([local_len])
                 # print("len list, ", global_len_list)
@@ -172,9 +171,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #compressed_msg = torch.randn(100).cuda()
                 self._handles[p] = handle
 
-                torch.cuda.synchronize()
-                end_time = time.time()
-                self.pruning_time += end_time - begin_time
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
@@ -188,6 +184,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 handle = allreduce_async_(p.grad.data, average=True, name=name)
                 self._handles[p] = handle
+            torch.cuda.synchronize()
+            end_time = time.time()
+            self.pruning_time += end_time - begin_time
 
             torch.cuda.synchronize()
             end_time = time.time()

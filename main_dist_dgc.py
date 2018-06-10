@@ -133,7 +133,7 @@ parser.add_argument('--use_cluster', dest='use_cluster', action='store_true',
                     help='synchronize all parameters every sync_interval steps')
 parser.add_argument('--no_use_cluster', dest='use_cluster', action='store_false',
                     help='synchronize all parameters every sync_interval steps')
-parser.set_defaults(use_sync=False)
+parser.set_defaults(use_cluster=False)
 
 
 
@@ -170,7 +170,6 @@ def main():
     else:
         print("pruning_mode should be set correctly")
         exit(0)
-
 
 
 
@@ -327,6 +326,8 @@ def main():
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
 
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+
+    global_begin_time = time.time()
     for epoch in range(args.start_epoch, args.epochs // hvd.size()):
         #optimizer = adjust_optimizer(optimizer, epoch, regime)
         for e, v in regime.items():
@@ -376,21 +377,23 @@ def main():
 
 
         if(hvd.local_rank() == 0):
+            current_time = time.time()
             results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                         train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
-                        train_error5=100 - train_prec5.cpu().numpy(), val_error5=100 - val_prec5.cpu().numpy())
+                        train_error5=100 - train_prec5.cpu().numpy(), val_error5=100 - val_prec5.cpu().numpy(),
+                        eslapse = current_time - global_begin_time)
 
-            results.plot(x='epoch', y=['train_loss', 'val_loss'],
-                         title='Loss', ylabel='loss')
-            results.plot(x='epoch', y=['train_error1', 'val_error1'],
-                         title='Error@1', ylabel='error %')
-            results.plot(x='epoch', y=['train_error5', 'val_error5'],
-                         title='Error@5', ylabel='error %')
+            #results.plot(x='epoch', y=['train_loss', 'val_loss'],
+            #             title='Loss', ylabel='loss')
+            #results.plot(x='epoch', y=['train_error1', 'val_error1'],
+            #             title='Error@1', ylabel='error %')
+            #results.plot(x='epoch', y=['train_error5', 'val_error5'],
+            #             title='Error@5', ylabel='error %')
 
-            for k in idxs:
-                results.plot(x='epoch', y=['step_dist_n%s' % k],
-                             title='step distance per epoch %s' % k,
-                             ylabel='val')
+            #for k in idxs:
+            #    results.plot(x='epoch', y=['step_dist_n%s' % k],
+            #                 title='step distance per epoch %s' % k,
+            #                 ylabel='val')
 
             results.save()
 
@@ -440,8 +443,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             top1.update(prec1[0], input_var.size(0))
             top5.update(prec5[0], input_var.size(0))
 
-            if args.use_pruning:
-                clip_grad_norm(model.parameters(), 5. * (hvd.size() ** -0.5))
+            #if args.use_pruning:
+            #    clip_grad_norm(model.parameters(), 5. * (hvd.size() ** -0.5))
 
             optimizer.zero_grad()
             loss.backward()
