@@ -84,6 +84,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
         self.pruning_time = 0.0
         self.select_time = 0.0
+        self.comm_time = 0.0
 
         if size() > 1:
             self._register_hooks()
@@ -135,6 +136,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #self._U[name] = self._U[name] * (1 - self._masks[name])
                 self._V[name].mul_(self._masks[name])
                 self._U[name].mul_(self._masks[name])
+
+                torch.cuda.synchronize()
+                begin_comm_time =  time.time()
+
                 self._compressed_msg_size[name] = len(compressed_idx)
                 if self._use_gpu:
                     compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
@@ -142,6 +147,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
 
                 handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+
+                torch.cuda.synchronize()
+                end_comm_time =  time.time()
+                self.comm_time += end_comm_time - begin_comm_time
+
                 self._handles[p] = handle
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
@@ -170,6 +180,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
             begin_time = time.time()
             p_size = np.prod(p.size())
             p_size = np.prod(p.size())
+
+            torch.cuda.synchronize()
+            begin_comm_time =  time.time()
             if self._use_allgather and p_size > 1024:
                 #fjr decompress
                 name = self._parameter_names.get(p)
@@ -196,6 +209,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 p.grad.data = p.grad.data.view(g_size)
                 if self._debug:
                     print("diff : ", torch.sum(self._v_ref[name] - p.grad.data))
+
+            torch.cuda.synchronize()
+            end_comm_time =  time.time()
+            self.comm_time += end_comm_time - begin_comm_time
 
             torch.cuda.synchronize()
             end_time = time.time()
