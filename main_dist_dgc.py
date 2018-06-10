@@ -443,8 +443,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             top1.update(prec1[0], input_var.size(0))
             top5.update(prec5[0], input_var.size(0))
 
-            if args.use_pruning:
-                clip_grad_norm(model.parameters(), 5. * (hvd.size() ** -0.5))
+            #if args.use_pruning:
+            #    clip_grad_norm(model.parameters(), 5. * (hvd.size() ** -0.5))
 
             optimizer.zero_grad()
             loss.backward()
