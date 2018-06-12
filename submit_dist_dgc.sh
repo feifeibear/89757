@@ -6,8 +6,8 @@ export USE_PRUNING=use_pruning
 export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
-export MODEL_NAME=alexnet
-#export MODEL_NAME=vgg16
+#export MODEL_NAME=alexnet
+export MODEL_NAME=vgg16
 #export MODEL_NAME=cifar10_shallow
 #export MODEL_NAME=resnet
 #export MODEL_NAME=widenet
@@ -19,21 +19,24 @@ export LRSCALE=lr_bb_fix
 export MOMENTUM=0.9
 export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
-export DATASET=imagenet #cifar10
-#export DATASET=cifar100
-export NUM_NODE=4
+#export DATASET=imagenet #cifar10
+export DATASET=cifar10
 export USE_CUDA=cuda.
-export PRUNE_MODE=2
+export PRUNE_MODE=3
+export NUM_NODE=2
+export USE_CLUSTER=use_cluster
 
 # mode 0 - exp model
 # mode 1 - thd model
-# mode 2 - topk model
+# mode 2 - chunk model
+# mode 3 - topk model
 
-for PRUNE_MODE in 2;
+for PRUNE_MODE in 3;
 do
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --dataset ${DATASET} \
-  --gpus 2,3,4,5 \
+  --${USE_CLUSTER} \
+  --gpus 0 \
   --type torch.${USE_CUDA}FloatTensor \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \

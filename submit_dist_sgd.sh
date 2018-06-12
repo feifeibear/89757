@@ -1,13 +1,13 @@
 #export PATH=/home/fangjr/miniconda3/lib:/home/fangjr/miniconda3/bin:$PATH
 #source activate dgc
 
-export BATCH_SIZE=64
+export BATCH_SIZE=256 #64
 export USE_PRUNING=no_use_pruning
 export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
-export MODEL_NAME=alexnet
-#export MODEL_NAME=vgg16
+#export MODEL_NAME=alexnet
+export MODEL_NAME=vgg16
 #export MODEL_NAME=widenet
 #export MODEL_NAME=cifar10_shallow
 #export MODEL_NAME=resnet
@@ -19,14 +19,15 @@ export LRSCALE=lr_bb_fix
 export MOMENTUM=0.9
 export WEIGHTDECAY=0.0001
 export USE_NES=use_nesterov
-export DATASET=imagenet #cifar10
-#export DATASET=cifar10
-export NUM_NODE=4
+#export DATASET=imagenet #cifar10
+export DATASET=cifar10
+export NUM_NODE=1
 export USE_CUDA=cuda.
+export USE_CLUSTER=use_cluster
 
 mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
   --dataset ${DATASET} \
-  --gpus 2,3,4,5 \
+  --gpus 0,1,2,3 \
   --type torch.${USE_CUDA}FloatTensor \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \
