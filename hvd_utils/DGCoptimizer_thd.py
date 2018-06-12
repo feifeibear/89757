@@ -87,6 +87,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
         self.pruning_time = 0.0
         self.select_time = 0.0
+        self.pack_time = 0.0
 
         if size() > 1:
             self._register_hooks()
@@ -156,7 +157,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 torch.cuda.synchronize()
                 begin_select_time =  time.time()
                 compressed_val, compressed_idx = select_top_k_thdv3(param_state['residue_buffer'], 0.001)
-                local_len = len(compressed_idx)
                 torch.cuda.synchronize()
                 end_select_time =  time.time()
                 self.select_time += end_select_time - begin_select_time
@@ -186,6 +186,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 param_state['residue_buffer'].mul_(self._masks[name])
                 param_state['momentum_buffer'].mul_(self._masks[name])
                 #self._compressed_msg_size[name] = len(compressed_idx)
+
+                torch.cuda.synchronize()
+                begin_pack_time =  time.time()
+
                 if self._use_gpu:
                     compressed_msg = torch.cat([\
                             torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),\
@@ -197,6 +201,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 #compressed_msg = torch.randn(100).cuda()
                 self._handles[p] = handle
+
+                torch.cuda.synchronize()
+                self.pack_time += time.time() - begin_pack_time
 
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
@@ -229,6 +236,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 name = self._parameter_names.get(p)
                 #msg_size = self._compressed_msg_size[name]
                 #print("rank, msg_size is ", hvd.local_rank(), msg_size)
+
+                torch.cuda.synchronize()
+                begin_pack_time =  time.time()
+
                 g_size = p.grad.data.size()
                 p_flatten = p.grad.data.view(-1)
                 p_flatten.zero_()
@@ -253,6 +264,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                 self._compressed_msg[name][offset + msg_size : \
                                 offset + 2*msg_size]
                         offset += msg_size * 2;
+
+                torch.cuda.synchronize()
+                self.pack_time += time.time() - begin_pack_time
 
                 p.grad.data = p.grad.data.view(g_size)
                 if self._debug:

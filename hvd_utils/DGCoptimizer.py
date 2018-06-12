@@ -84,10 +84,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
         self.pruning_time = 0.0
         self.select_time = 0.0
-        self.comm_time = 0.0
+        self.pack_time = 0.0
 
-        if size() > 1:
-            self._register_hooks()
+        #if size() > 1:
+        self._register_hooks()
 
     def _register_hooks(self):
         for param_group in self.param_groups:
@@ -150,7 +150,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
                 torch.cuda.synchronize()
                 end_comm_time =  time.time()
-                self.comm_time += end_comm_time - begin_comm_time
+                self.pack_time += end_comm_time - begin_comm_time
 
                 self._handles[p] = handle
             else:
@@ -212,7 +212,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
             torch.cuda.synchronize()
             end_comm_time =  time.time()
-            self.comm_time += end_comm_time - begin_comm_time
+            self.pack_time += end_comm_time - begin_comm_time
 
             torch.cuda.synchronize()
             end_time = time.time()
