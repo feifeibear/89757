@@ -150,7 +150,7 @@ def main():
     size = hvd.size()
     local_rank = hvd.local_rank()
 
-    torch.manual_seed(123 + local_rank)
+    torch.manual_seed(123 + hvd.rank())
     global args, best_prec1
     best_prec1 = 0
     args = parser.parse_args()
@@ -179,20 +179,20 @@ def main():
         args.save = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     save_path = os.path.join(args.results_dir, args.save)
     if not os.path.exists(save_path):
-        if local_rank == 0:
+        if hvd.rank() == 0:
             os.makedirs(save_path)
 
-    if hvd.local_rank() == 0:
+    if hvd.rank() == 0:
         setup_logging(os.path.join(save_path, 'log.txt'))
         results_file = os.path.join(save_path, 'results.%s')
         results = ResultsLog(results_file % 'csv', results_file % 'html')
 
-    if local_rank == 0:
+    if hvd.rank()== 0:
         logging.info("saving to %s", save_path)
         logging.debug("run arguments: %s", args)
 
     if 'cuda' in args.type:
-        torch.cuda.manual_seed(123 + local_rank)
+        torch.cuda.manual_seed(123 + hvd.rank())
         args.gpus = [int(i) for i in args.gpus.split(',')]
 
         if args.use_cluster:
@@ -298,7 +298,7 @@ def main():
 
     U = []
     V = []
-    print("current rank ", hvd.local_rank(), " USE_PRUNING ", args.use_pruning)
+    print("current rank ", hvd.rank()," local rank ", hvd.local_rank(), " USE_PRUNING ", args.use_pruning)
     print("model ", args.model, " use_nesterov ", args.use_nesterov)
 
     if args.gpus is not None:
@@ -376,7 +376,7 @@ def main():
                            for (k, w) in enumerate(list(model.parameters())) if k in idxs}
 
 
-        if(hvd.local_rank() == 0):
+        if(hvd.rank() == 0):
             current_time = time.time()
             results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                         train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
@@ -481,7 +481,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         end = time.time()
 
         if i % args.print_freq == 0:
-            if hvd.local_rank() == 0:
+            if hvd.rank() == 0:
                 logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
                              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                              'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
