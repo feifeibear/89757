@@ -361,7 +361,9 @@ def main():
             'best_prec1': best_prec1,
             'regime': regime
         }, is_best, path=save_path)
-        logging.info('\n Epoch: {0}\t'
+        if hvd.rank() == 0:
+            if torch.__version__ == "0.4.0":
+                logging.info('\n Epoch: {0}\t'
                      'Training Loss {train_loss:.4f} \t'
                      'Training Prec@1 {train_prec1:.3f} \t'
                      'Training Prec@5 {train_prec5:.3f} \t'
@@ -371,6 +373,17 @@ def main():
                      .format(epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                              train_prec1=train_prec1.cpu().numpy(), val_prec1=val_prec1.cpu().numpy(),
                              train_prec5=train_prec5.cpu().numpy(), val_prec5=val_prec5.cpu().numpy()))
+            else:
+                logging.info('\n Epoch: {0}\t'
+                     'Training Loss {train_loss:.4f} \t'
+                     'Training Prec@1 {train_prec1:.3f} \t'
+                     'Training Prec@5 {train_prec5:.3f} \t'
+                     'Validation Loss {val_loss:.4f} \t'
+                     'Validation Prec@1 {val_prec1:.3f} \t'
+                     'Validation Prec@5 {val_prec5:.3f} \n'
+                     .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
+                             train_prec1=train_prec1, val_prec1=val_prec1,
+                             train_prec5=train_prec5, val_prec5=val_prec5))
 
         #Enable to measure more layers
         idxs = [0]#,2,4,6,7,8,9,10]#[0, 12, 45, 63]
