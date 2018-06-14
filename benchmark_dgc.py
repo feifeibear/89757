@@ -179,7 +179,7 @@ def main():
         args.save = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     save_path = os.path.join(args.results_dir, args.save)
     if not os.path.exists(save_path):
-        if local_rank == 0:
+        if hvd.rank() == 0:
             os.makedirs(save_path)
 
     if hvd.local_rank() == 0:
@@ -274,22 +274,23 @@ def main():
     criterion.type(args.type)
     model.type(args.type)
 
-    val_data = get_dataset(args.dataset, 'val', transform['eval'])
-    val_loader = torch.utils.data.DataLoader(
-        val_data,
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+    #val_data = get_dataset(args.dataset, 'val', transform['eval'])
+    #val_loader = torch.utils.data.DataLoader(
+    #    val_data,
+    #    batch_size=args.batch_size, shuffle=False,
+    #    num_workers=args.workers, pin_memory=True)
+    val_loader = None
 
     if args.evaluate:
         validate(val_loader, model, criterion, 0)
         return
 
-    train_data = get_dataset(args.dataset, 'train', transform['train'])
-    train_loader = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
-
+    #train_data = get_dataset(args.dataset, 'train', transform['train'])
+    #train_loader = torch.utils.data.DataLoader(
+    #    train_data,
+    #    batch_size=args.batch_size, shuffle=True,
+    #    num_workers=args.workers, pin_memory=True)
+    train_loader = None
 
     logging.info('training regime: %s', regime)
     print({i: list(w.size())
@@ -512,7 +513,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                              'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                              'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                                 epoch, i, len(data_loader),
+                                 epoch, i, 1000,
                                  phase='TRAINING' if training else 'EVALUATING',
                                  batch_time=batch_time,
                                  data_time=data_time,
