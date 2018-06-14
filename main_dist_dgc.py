@@ -385,9 +385,9 @@ def main():
                      'Validation Loss {val_loss:.4f} \t'
                      'Validation Prec@1 {val_prec1:.3f} \t'
                      'Validation Prec@5 {val_prec5:.3f} \n'
-                     .format(epoch + 1, train_loss=train_loss.cpu(), val_loss=val_loss.cpu(),
-                             train_prec1=train_prec1.cpu(), val_prec1=val_prec1.cpu(),
-                             train_prec5=train_prec5.cpu(), val_prec5=val_prec5.cpu()))
+                     .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
+                             train_prec1=train_prec1, val_prec1=val_prec1,
+                             train_prec5=train_prec5, val_prec5=val_prec5))
 
 
         #Enable to measure more layers
