@@ -134,19 +134,23 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
                 #self._V[name] = self._V[name] * (1 - self._masks[name])
                 #self._U[name] = self._U[name] * (1 - self._masks[name])
+                if hvd.size() == 1:
+                    p.grad.data = self._V[name] * self._masks[name]
+
                 self._V[name].mul_(self._masks[name])
                 self._U[name].mul_(self._masks[name])
 
                 torch.cuda.synchronize()
                 begin_comm_time =  time.time()
 
-                self._compressed_msg_size[name] = len(compressed_idx)
-                if self._use_gpu:
-                    compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
-                else:
-                    compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
+                if hvd.size > 1:
+                    self._compressed_msg_size[name] = len(compressed_idx)
+                    if self._use_gpu:
+                        compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
+                    else:
+                        compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
 
-                handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+                    handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
 
                 torch.cuda.synchronize()
                 end_comm_time =  time.time()
@@ -164,8 +168,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 p.grad.data = self._V[name]
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
-                handle = allreduce_async_(p.grad.data, average=True, name=name)
-                self._handles[p] = handle
+                if hvd.size() > 1:
+                    handle = allreduce_async_(p.grad.data, average=True, name=name)
+                    self._handles[p] = handle
 
             torch.cuda.synchronize()
             end_time = time.time()
@@ -183,7 +188,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
             torch.cuda.synchronize()
             begin_comm_time =  time.time()
-            if self._use_allgather and p_size > 1024:
+            if self._use_allgather and p_size > 1024 and hvd.size() > 1:
                 #fjr decompress
                 name = self._parameter_names.get(p)
                 msg_size = self._compressed_msg_size[name]

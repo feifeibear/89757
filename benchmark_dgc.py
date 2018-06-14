@@ -135,6 +135,13 @@ parser.add_argument('--no_use_cluster', dest='use_cluster', action='store_false'
                     help='synchronize all parameters every sync_interval steps')
 parser.set_defaults(use_cluster=False)
 
+parser.add_argument('--use_hvddist', dest='use_hvddist', action='store_true',
+                    help='to use orignal hvddist')
+parser.add_argument('--no_use_hvddist', dest='use_hvddist', action='store_false',
+                    help='no use orignal hvddist')
+parser.set_defaults(use_hvddist=False)
+
+
 
 
 parser.add_argument('--use_debug', dest='use_debug', action='store_true',
@@ -294,9 +301,10 @@ def main():
     #    num_workers=args.workers, pin_memory=True)
     train_loader = None
 
-    logging.info('training regime: %s', regime)
-    print({i: list(w.size())
-           for (i, w) in enumerate(list(model.parameters()))})
+    if hvd.rank() == 0:
+        logging.info('training regime: %s', regime)
+        print({i: list(w.size())
+               for (i, w) in enumerate(list(model.parameters()))})
     init_weights = [w.data.cpu().clone() for w in list(model.parameters())]
 
     U = []
@@ -321,14 +329,17 @@ def main():
         else:
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
     else:
-        #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-        #optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True)
-        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-        #if args.gpus is not None:
-        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
-        #else:
-        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        if args.use_hvddist:
+            print("use orignal hvd DistributedOptimizer")
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4,
+                    nesterov=True)
+            optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        else:
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+            if args.gpus is not None:
+                optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+            else:
+                optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
 
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
@@ -494,7 +505,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
 
             # Master
-            if args.use_pruning:
+            if 1 and args.use_pruning:
                 pruning_time.update(optimizer.pruning_time)
                 select_time.update(optimizer.select_time)
                 comm_time.update(optimizer.pack_time)
