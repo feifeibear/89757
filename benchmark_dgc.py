@@ -181,6 +181,8 @@ def main():
     if not os.path.exists(save_path):
         if hvd.rank() == 0:
             os.makedirs(save_path)
+        else:
+            time.sleep(1)
 
     if hvd.local_rank() == 0:
         setup_logging(os.path.join(save_path, 'log.txt'))
@@ -321,11 +323,12 @@ def main():
     else:
         #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
         #optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-        if args.gpus is not None:
-            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
-        else:
-            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True)
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        #if args.gpus is not None:
+        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        #else:
+        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
 
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
@@ -492,21 +495,22 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                 optimizer.pruning_time = 0.0
                 optimizer.select_time = 0.0
                 optimizer.pack_time = 0.0
-            else:
-                # idx = 0
-                # for p in list(model.parameters()):
-                #     # print("accumulated sparsity is", check_sparsity(g))
-                #     # TODO 1. use pytorch sgd optimizer to calculate mom and weight_decay, set mom and wd
-                #     # used with pruning
-                #     # TODO 2. implement weight_decay and momentum by myself, set mom=0 and wd = 0
-                #     # used with baseline
-                #     g = p.grad.data
-                #     g.add_(torch.mul(p.data, args.weight_decay))
-                #     V[idx] = torch.add(torch.mul(V[idx], args.momentum), g)
-                #     p.grad.data = V[idx]
-                #     idx = idx+1
-                optimizer.synchronize()
-                clip_grad_norm(model.parameters(), 5.)
+            # if args.use_pruning:
+            # else:
+            #     # idx = 0
+            #     # for p in list(model.parameters()):
+            #     #     # print("accumulated sparsity is", check_sparsity(g))
+            #     #     # TODO 1. use pytorch sgd optimizer to calculate mom and weight_decay, set mom and wd
+            #     #     # used with pruning
+            #     #     # TODO 2. implement weight_decay and momentum by myself, set mom=0 and wd = 0
+            #     #     # used with baseline
+            #     #     g = p.grad.data
+            #     #     g.add_(torch.mul(p.data, args.weight_decay))
+            #     #     V[idx] = torch.add(torch.mul(V[idx], args.momentum), g)
+            #     #     p.grad.data = V[idx]
+            #     #     idx = idx+1
+            #     optimizer.synchronize()
+            #     clip_grad_norm(model.parameters(), 5.)
 
             optimizer.step()
 
