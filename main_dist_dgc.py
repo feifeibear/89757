@@ -399,9 +399,15 @@ def main():
 
         if(hvd.rank() == 0):
             current_time = time.time()
-            results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
+            if torch.__version__ == "0.4.0":
+                results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                         train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
                         train_error5=100 - train_prec5.cpu().numpy(), val_error5=100 - val_prec5.cpu().numpy(),
+                        eslapse = current_time - global_begin_time)
+            else:
+                results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
+                        train_error1=100 - train_prec1, val_error1=100 - val_prec1,
+                        train_error5=100 - train_prec5, val_error5=100 - val_prec5,
                         eslapse = current_time - global_begin_time)
 
             #results.plot(x='epoch', y=['train_loss', 'val_loss'],

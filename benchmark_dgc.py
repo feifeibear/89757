@@ -184,17 +184,17 @@ def main():
         else:
             time.sleep(1)
 
-    if hvd.local_rank() == 0:
+    if hvd.rank() == 0:
         setup_logging(os.path.join(save_path, 'log.txt'))
         results_file = os.path.join(save_path, 'results.%s')
         results = ResultsLog(results_file % 'csv', results_file % 'html')
 
-    if local_rank == 0:
+    if hvd.rank() == 0:
         logging.info("saving to %s", save_path)
         logging.debug("run arguments: %s", args)
 
     if 'cuda' in args.type:
-        torch.cuda.manual_seed(123 + local_rank)
+        torch.cuda.manual_seed(123 + hvd.rank())
         args.gpus = [int(i) for i in args.gpus.split(',')]
 
         if args.use_cluster:
@@ -397,9 +397,15 @@ def main():
 
         if(hvd.rank() == 0):
             current_time = time.time()
-            results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
+            if hvd.rank() == 0:
+                results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                         train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
                         train_error5=100 - train_prec5.cpu().numpy(), val_error5=100 - val_prec5.cpu().numpy(),
+                        eslapse = current_time - global_begin_time)
+            else:
+                results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
+                        train_error1=100 - train_prec1, val_error1=100 - val_prec1,
+                        train_error5=100 - train_prec5, val_error5=100 - val_prec5,
                         eslapse = current_time - global_begin_time)
 
             #results.plot(x='epoch', y=['train_loss', 'val_loss'],
