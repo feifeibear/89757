@@ -150,7 +150,7 @@ def main():
     size = hvd.size()
     local_rank = hvd.local_rank()
 
-    torch.manual_seed(123 + local_rank)
+    torch.manual_seed(123 + hvd.rank())
     global args, best_prec1
     best_prec1 = 0
     args = parser.parse_args()
@@ -196,7 +196,7 @@ def main():
         args.gpus = [int(i) for i in args.gpus.split(',')]
 
         if args.use_cluster:
-            torch.cuda.set_device(0)
+            torch.cuda.set_device(local_rank())
         else:
             if(hvd.local_rank() < len(args.gpus)):
                 print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[hvd.local_rank()])
@@ -298,7 +298,8 @@ def main():
 
     U = []
     V = []
-    print("current rank ", hvd.local_rank(), " USE_PRUNING ", args.use_pruning)
+    print("current rank ", hvd.rank(), "local_rank ", hvd.local_rank(), \
+            " USE_PRUNING ", args.use_pruning)
     print("model ", args.model, " use_nesterov ", args.use_nesterov)
 
     if args.gpus is not None:
@@ -377,7 +378,7 @@ def main():
                            for (k, w) in enumerate(list(model.parameters())) if k in idxs}
 
 
-        if(hvd.local_rank() == 0):
+        if(hvd.rank() == 0):
             current_time = time.time()
             results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                         train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
@@ -426,14 +427,14 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     #         print(target_var.size())
     #     break
     if "imagenet" in args.dataset:
-        input_var = torch.randn(args.batch_size, 3, 244, 244).cuda()
-        target_var = torch.LongTensor(64).random_(0, 1000).cuda()
+        input_var = Variable(torch.randn(args.batch_size, 3, 244, 244).cuda(), volatile=not training)
+        target_var = Variable(torch.LongTensor(64).random_(0, 1000).cuda())
     elif "cifar10" in args.dataset:
-        input_var = torch.randn(args.batch_size, 3, 32, 32).cuda()
-        target_var = torch.LongTensor(64).random_(0, 10).cuda()
+        input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
+        target_var = Variable(torch.LongTensor(64).random_(0, 10).cuda())
     elif "cifar100" in args.dataset:
-        input_var = torch.randn(args.batch_size, 3, 32, 32).cuda()
-        target_var = torch.LongTensor(64).random_(0, 100).cuda()
+        input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
+        target_var = Variable(torch.LongTensor(64).random_(0, 100).cuda())
 
     torch.cuda.synchronize()
     end = time.time()
@@ -501,7 +502,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         end = time.time()
 
         if i % args.print_freq == 0:
-            if hvd.local_rank() == 0:
+            if hvd.rank() == 0:
                 logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
                              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                              'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'

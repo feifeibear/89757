@@ -196,7 +196,7 @@ def main():
         args.gpus = [int(i) for i in args.gpus.split(',')]
 
         if args.use_cluster:
-            torch.cuda.set_device(0)
+            torch.cuda.set_device(hvd.local_rank())
         else:
             if(hvd.local_rank() < len(args.gpus)):
                 print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[hvd.local_rank()])
@@ -209,7 +209,8 @@ def main():
         args.gpus = None
 
     # create model
-    logging.info("creating model %s", args.model)
+    if hvd.rank()== 0:
+        logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
     model_config = {'input_size': args.input_size, 'dataset': args.dataset, 'depth': args.resnet_depth}
 
@@ -217,7 +218,8 @@ def main():
         model_config = dict(model_config, **literal_eval(args.model_config))
 
     model = model(**model_config)
-    logging.info("created model with configuration: %s", model_config)
+    if hvd.rank()== 0:
+        logging.info("created model with configuration: %s", model_config)
 
     # optionally resume from a checkpoint
     if args.evaluate:
@@ -245,7 +247,9 @@ def main():
             logging.error("no checkpoint found at '%s'", args.resume)
 
     num_parameters = sum([l.nelement() for l in model.parameters()])
-    logging.info("number of parameters: %d", num_parameters)
+
+    if hvd.rank() == 0:
+        logging.info("number of parameters: %d", num_parameters)
 
     # Data loading code
     default_transform = {
@@ -261,7 +265,8 @@ def main():
                                            #'weight_decay': args.weight_decay
                                            }})
     adapted_regime = {}
-    logging.info('self-defined momentum : %f, weight_decay : %f', args.momentum, args.weight_decay)
+    if hvd.rank() == 0:
+        logging.info('self-defined momentum : %f, weight_decay : %f', args.momentum, args.weight_decay)
     for e, v in regime.items():
         if args.lr_bb_fix and 'lr' in v:
             # v['lr'] *= (args.batch_size / args.mini_batch_size) ** 0.5
@@ -291,7 +296,8 @@ def main():
         num_workers=args.workers, pin_memory=True)
 
 
-    logging.info('training regime: %s', regime)
+    if hvd.rank() == 0:
+        logging.info('training regime: %s', regime)
     print({i: list(w.size())
            for (i, w) in enumerate(list(model.parameters()))})
     init_weights = [w.data.cpu().clone() for w in list(model.parameters())]
@@ -299,7 +305,8 @@ def main():
     U = []
     V = []
     print("current rank ", hvd.rank()," local rank ", hvd.local_rank(), " USE_PRUNING ", args.use_pruning)
-    print("model ", args.model, " use_nesterov ", args.use_nesterov)
+    if hvd.rank() == 0:
+        print("model ", args.model, " use_nesterov ", args.use_nesterov)
 
     if args.gpus is not None:
         U = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
@@ -358,7 +365,9 @@ def main():
             'best_prec1': best_prec1,
             'regime': regime
         }, is_best, path=save_path)
-        logging.info('\n Epoch: {0}\t'
+        if hvd.rank() == 0:
+            if torch.__version__ == "0.4.0":
+                logging.info('\n Epoch: {0}\t'
                      'Training Loss {train_loss:.4f} \t'
                      'Training Prec@1 {train_prec1:.3f} \t'
                      'Training Prec@5 {train_prec5:.3f} \t'
@@ -368,6 +377,18 @@ def main():
                      .format(epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                              train_prec1=train_prec1.cpu().numpy(), val_prec1=val_prec1.cpu().numpy(),
                              train_prec5=train_prec5.cpu().numpy(), val_prec5=val_prec5.cpu().numpy()))
+            else:
+                logging.info('\n Epoch: {0}\t'
+                     'Training Loss {train_loss:.4f} \t'
+                     'Training Prec@1 {train_prec1:.3f} \t'
+                     'Training Prec@5 {train_prec5:.3f} \t'
+                     'Validation Loss {val_loss:.4f} \t'
+                     'Validation Prec@1 {val_prec1:.3f} \t'
+                     'Validation Prec@5 {val_prec5:.3f} \n'
+                     .format(epoch + 1, train_loss=train_loss.cpu(), val_loss=val_loss.cpu(),
+                             train_prec1=train_prec1.cpu(), val_prec1=val_prec1.cpu(),
+                             train_prec5=train_prec5.cpu(), val_prec5=val_prec5.cpu()))
+
 
         #Enable to measure more layers
         idxs = [0]#,2,4,6,7,8,9,10]#[0, 12, 45, 63]
