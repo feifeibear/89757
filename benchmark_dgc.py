@@ -196,7 +196,7 @@ def main():
         args.gpus = [int(i) for i in args.gpus.split(',')]
 
         if args.use_cluster:
-            torch.cuda.set_device(local_rank())
+            torch.cuda.set_device(hvd.local_rank())
         else:
             if(hvd.local_rank() < len(args.gpus)):
                 print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[hvd.local_rank()])
