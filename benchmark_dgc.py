@@ -462,13 +462,13 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     #     break
     if "imagenet" in args.dataset:
         input_var = Variable(torch.randn(args.batch_size, 3, 244, 244).cuda(), volatile=not training)
-        target_var = Variable(torch.LongTensor(64).random_(0, 1000).cuda())
+        target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 1000).cuda())
     elif "cifar10" in args.dataset:
         input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
-        target_var = Variable(torch.LongTensor(64).random_(0, 10).cuda())
+        target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 10).cuda())
     elif "cifar100" in args.dataset:
         input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
-        target_var = Variable(torch.LongTensor(64).random_(0, 100).cuda())
+        target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 100).cuda())
 
     torch.cuda.synchronize()
     end = time.time()

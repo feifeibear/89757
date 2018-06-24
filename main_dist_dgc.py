@@ -145,6 +145,12 @@ parser.set_defaults(use_debug=False)
 
 parser.add_argument('--pruning_mode', '-pm', default=0, type=int,
                     help='prune mode')
+
+args = parser.parse_args()
+save_path = os.path.join(args.results_dir, args.save)
+moniter_file = os.path.join(save_path, 'moniters.%s')
+moniters = ResultsLog(moniter_file % 'csv', moniter_file % 'html')
+
 def main():
     hvd.init()
     size = hvd.size()
@@ -154,24 +160,6 @@ def main():
     global args, best_prec1
     best_prec1 = 0
     args = parser.parse_args()
-
-    if args.pruning_mode == 0:
-        print("exp mode")
-        from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
-    elif args.pruning_mode == 1:
-        print("thd mode")
-        from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
-    elif args.pruning_mode == 2:
-        print("chunck mode")
-        from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
-    elif args.pruning_mode == 3:
-        print("topk mode")
-        from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
-    else:
-        print("pruning_mode should be set correctly")
-        exit(0)
-
-
 
     if args.evaluate:
         args.results_dir = '/tmp'
@@ -190,6 +178,30 @@ def main():
     if hvd.rank()== 0:
         logging.info("saving to %s", save_path)
         logging.debug("run arguments: %s", args)
+
+    if args.pruning_mode == 0:
+        logging.info("exp mode")
+        from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
+    elif args.pruning_mode == 1:
+        logging.info("thd mode")
+        from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
+    elif args.pruning_mode == 2:
+        logging.info("chunck mode")
+        from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
+    elif args.pruning_mode == 3:
+        logging.info("topk mode")
+        from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
+    elif args.pruning_mode == 4:
+        logging.info("allreduce mode")
+        from hvd_utils.DGCoptimizer_allreduce import DGCDistributedOptimizer
+    elif args.pruning_mode == 5:
+        logging.info("allreduce prune mode")
+        from hvd_utils.DGCoptimizer_thd_allreduce import DGCDistributedOptimizer
+    else:
+        print("pruning_mode should be set correctly")
+        exit(0)
+
+
 
     if 'cuda' in args.type:
         torch.cuda.manual_seed(123 + hvd.rank())
@@ -324,13 +336,13 @@ def main():
         else:
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
     else:
-        #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-        #optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-        if args.gpus is not None:
-            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
-        else:
-            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+        #if args.gpus is not None:
+        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        #else:
+        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
 
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
@@ -341,6 +353,7 @@ def main():
             if epoch == e // hvd.size():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = v['lr']
+                logging.info('learning rate is {0}'.format(v['lr']))
                 break
 
         # train for one epoch
@@ -486,6 +499,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                 optimizer.select_time = 0.0
                 optimizer.pack_time = 0.0
             else:
+                pass
                 # idx = 0
                 # for p in list(model.parameters()):
                 #     # print("accumulated sparsity is", check_sparsity(g))
@@ -498,8 +512,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                 #     V[idx] = torch.add(torch.mul(V[idx], args.momentum), g)
                 #     p.grad.data = V[idx]
                 #     idx = idx+1
-                optimizer.synchronize()
-                clip_grad_norm(model.parameters(), 5.)
+                #optimizer.synchronize()
+                #clip_grad_norm(model.parameters(), 5.)
 
             optimizer.step()
 
@@ -507,6 +521,10 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         batch_time.update(time.time() - end)
         end = time.time()
 
+        if training and i % 20 == 0:
+            if hvd.rank() == 0 and args.pruning_mode == 1:
+                moniters.add(mid=optimizer._mid, sparsity=optimizer._sparsity, it = optimizer._it)
+                moniters.save()
         if i % args.print_freq == 0:
             if hvd.rank() == 0:
                 logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
