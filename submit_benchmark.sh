@@ -7,9 +7,9 @@ export USE_RESIDUE_ACC=use_residue_acc
 export USE_WARMUP=no_use_warmup
 export USE_SYNC=no_use_sync
 #export MODEL_NAME=alexnet
-export MODEL_NAME=vgg16
+#export MODEL_NAME=vgg16
 #export MODEL_NAME=cifar10_shallow
-#export MODEL_NAME=resnet
+export MODEL_NAME=resnet
 #export MODEL_NAME=widenet
 #export MODEL_NAME=mobilenetv2 #resnet
 #export RESNET_DEPTH=50
@@ -23,8 +23,8 @@ export USE_NES=use_nesterov
 export DATASET=cifar10
 export USE_CUDA=cuda.
 export PRUNE_MODE=3
-export NUM_NODE=2
-export USE_CLUSTER=use_cluster
+export NUM_NODE=3
+export USE_CLUSTER=no_use_cluster
 
 # mode 0 - exp model
 # mode 1 - thd model
@@ -33,10 +33,12 @@ export USE_CLUSTER=use_cluster
 
 for PRUNE_MODE in 3;
 do
-mpirun -np ${NUM_NODE} python3 ./main_dist_dgc.py \
+mpirun -np ${NUM_NODE} \
+  -bind-to none -map-by slot \
+  python3 ./benchmark_dgc.py \
   --dataset ${DATASET} \
   --${USE_CLUSTER} \
-  --gpus 0 \
+  --gpus 0,1,2,3,4,5 \
   --type torch.${USE_CUDA}FloatTensor \
   --resnet_depth=${RESNET_DEPTH} \
   --model ${MODEL_NAME} \

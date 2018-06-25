@@ -62,7 +62,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
-            self._compressed_msg = {k: torch.zeros(0).cuda() for k, v
+            self._compressed_idx= {k: torch.zeros(0, dtype=torch.long).cuda() for k, v
+                                 in sorted(named_parameters)}
+            self._compressed_val = {k: torch.zeros(0).cuda() for k, v
                                  in sorted(named_parameters)}
         else:
             self._V = {k: torch.zeros(v.size()) for k, v
@@ -73,7 +75,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
-            self._compressed_msg = {k: torch.zeros(0) for k, v
+            self._compressed_idx = {k: torch.zeros(0) for k, v
+                                 in sorted(named_parameters)}
+            self._compressed_val = {k: torch.zeros(0) for k, v
                                  in sorted(named_parameters)}
         self._compressed_len= {k: torch.zeros(0, dtype=torch.long) for k, v
                                  in sorted(named_parameters)}
@@ -83,6 +87,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                  in sorted(named_parameters)}
 
         self._handles = {}
+        self._handles_val = {}
+        self._handles_len = {}
         self._grad_accs = []
 
         self.pruning_time = 0.0
@@ -205,17 +211,27 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 torch.cuda.synchronize()
                 begin_pack_time =  time.time()
 
-                if self._use_gpu:
-                    compressed_msg = torch.cat([\
-                            torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),\
-                            compressed_idx.type('torch.cuda.FloatTensor'), \
-                            compressed_val])
-                else:
-                    compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.FloatTensor'),compressed_idx.type('torch.FloatTensor'), compressed_val])
+                #if self._use_gpu:
+                #    #compressed_msg = torch.cat([\
+                #    #        torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),\
+                #    #        compressed_idx.type('torch.cuda.FloatTensor'), \
+                #    #        compressed_val])
+                #    compressed_msg = torch.cat([\
+                #            torch.tensor([len(compressed_idx)]).type('torch.cuda.LongTensor'), \
+                #            compressed_idx])
 
-                handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+                handle = _allgather_async(compressed_idx, self._compressed_idx[name], name=name + 'idx')
                 #compressed_msg = torch.randn(100).cuda()
                 self._handles[p] = handle
+
+                handle = _allgather_async(compressed_val, self._compressed_val[name], name=name + 'val')
+                #compressed_msg = torch.randn(100).cuda()
+                self._handles_val[p] = handle
+
+                handle = _allgather_async(torch.tensor([len(compressed_idx)]), self._compressed_len[name], name=name + 'len')
+                #handle = _allgather_async(len(compressed_idx), self._compressed_len[name], name=name + 'len')
+                #compressed_msg = torch.randn(100).cuda()
+                self._handles_len[p] = handle
 
                 torch.cuda.synchronize()
                 self.pack_time += time.time() - begin_pack_time
@@ -247,6 +263,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
             begin_time = time.time()
             p_size = np.prod(p.size())
             if self._use_allgather and p_size > 1024:
+                handle = self._handles_val[p]
+                synchronize(handle)
+                handle = self._handles_len[p]
+                synchronize(handle)
                 #fjr decompress
                 name = self._parameter_names.get(p)
                 #msg_size = self._compressed_msg_size[name]
@@ -264,21 +284,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 offset = 0
                 for node_idx in range(hvd.size()):
                     if self._use_gpu:
-                        msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
-                        offset += 1
-                        p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_size].type('torch.cuda.LongTensor')] += \
-                                self._compressed_msg[name][offset + msg_size : \
-                                offset + 2*msg_size]
-                        offset += msg_size * 2;
-                    else:
-                        msg_size = self._compressed_msg[name][offset].type('torch.LongTensor')
-                        offset += 1
-                        p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_size].type('torch.LongTensor')] += \
-                                self._compressed_msg[name][offset + msg_size : \
-                                offset + 2*msg_size]
-                        offset += msg_size * 2;
+                        msg_size = self._compressed_len[name][node_idx].long()
+                        p_flatten[self._compressed_idx[name][offset: offset+msg_size]] += \
+                                self._compressed_val[name][offset: offset+msg_size]
+                        offset += msg_size
 
                 torch.cuda.synchronize()
                 self.pack_time += time.time() - begin_pack_time
@@ -294,6 +303,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             self.pruning_time += end_time - begin_time
 
         self._handles.clear()
+        self._handles_val.clear()
+        self._handles_len.clear()
 
     def step(self, closure=None):
         self.synchronize()

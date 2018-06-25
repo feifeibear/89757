@@ -415,9 +415,9 @@ def prune_perc_sample(x, perc):
 if __name__ == '__main__':
     torch.manual_seed(123)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    #x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(2048, 2048) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(14000000,) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     x = x.cuda()
@@ -452,12 +452,40 @@ if __name__ == '__main__':
 
     torch.cuda.synchronize()
     start = time()
+    val = []
+    idx = []
     for i in range(100):
         val, idx, _, _, _ = select_top_k_thdv3(x, ratio)
     torch.cuda.synchronize()
     stop = time()
     print("2. thresholdv3 run time : ", str((stop-start)/100), "s")
     print("sparsity is, ", len(val) / x_len)
+    #idx = idx.type('torch.cuda.FloatTensor')
+
+    compressed_msg = torch.cat([torch.tensor([len(idx)]).type('torch.cuda.FloatTensor'),\
+            idx.type('torch.cuda.FloatTensor'), val])
+
+    torch.cuda.synchronize()
+    start = time()
+    for i in range(100 * 16):
+        x_flatten[idx.type('torch.cuda.LongTensor')] += val
+    torch.cuda.synchronize()
+    stop = time()
+    print("3. index add time : ", str((stop-start)/100), "s")
+
+    torch.cuda.synchronize()
+    start = time()
+    N = compressed_msg[0].type('torch.cuda.LongTensor')
+    for i in range(100 * 16):
+        offset = 0
+        offset += 1
+        x_flatten[compressed_msg[offset: offset+N].type('torch.cuda.LongTensor')] += \
+                compressed_msg[offset+N: offset+2*N]
+    torch.cuda.synchronize()
+    stop = time()
+    print("4. index add time : ", str((stop-start)/100), "s")
+
+
 
     torch.cuda.synchronize()
     start = time()
@@ -473,52 +501,4 @@ if __name__ == '__main__':
     print("sparsity is, ", len(idx) / x_len)
 
 
-
-
-    torch.cuda.synchronize()
-    start = time()
-    for i in range(100):
-        mask1, val, idx = select_top_k_thd(x, ratio, mask1)
-    torch.cuda.synchronize()
-    stop = time()
-    print("4. hierachical topk run time : ", str((stop-start)/100), "s")
-
-    torch.cuda.synchronize()
-    start = time()
-    for i in range(100):
-        mask2, _, idx= select_top_k_appr(x, ratio, mask2)
-    torch.cuda.synchronize()
-    stop = time()
-    print("topk run time : ", str((stop-start)/100), "s")
-
-    print("5. Time transfer in 8 GB/s Ethernet : ", str(x_len * 8 / (1e9 * 8)), "s")
-    diff = mask1 - mask2
-    print("diff is, ", torch.sum(diff))
-
-    start = time()
-    for i in range(100):
-        _, x_top_idx = torch.topk(x_flatten, int(x_len * ratio)+1, 0, largest=True, sorted=False)
-    torch.cuda.synchronize()
-    stop = time()
-    print("top-k API run time : ", str((stop-start)/100), "s")
-
-    start = time()
-    for i in range(100):
-        x_size = x.size()
-        x_len = 1;
-        for dim in x.size():
-            x_len *= dim
-        top_k = int(x_len * ratio) + 1
-        _, x_idx = torch.topk((x.view(x_len)), top_k, 0, largest=True, sorted=False)
-        #x_bottom_val, x_bottom_idx = torch.topk((x.view(x_len)), top_k, 0, largest=False, sorted=False)
-        #x_val = torch.cat((x_top_val, x_bottom_val))
-        #x_idx = torch.cat((x_top_idx, x_bottom_idx))
-        x_val = torch.index_select(x.view(x_len), 0, x_idx)
-        mask1 = mask1.view(-1)
-        mask1.zero_()
-        mask1[x_idx] = 1.0
-        mask1 = mask1.view(x_size)
-    torch.cuda.synchronize()
-    stop = time()
-    print("top-k + clear time : ", str((stop-start)/100), "s")
 

@@ -135,6 +135,13 @@ parser.add_argument('--no_use_cluster', dest='use_cluster', action='store_false'
                     help='synchronize all parameters every sync_interval steps')
 parser.set_defaults(use_cluster=False)
 
+parser.add_argument('--use_hvddist', dest='use_hvddist', action='store_true',
+                    help='to use orignal hvddist')
+parser.add_argument('--no_use_hvddist', dest='use_hvddist', action='store_false',
+                    help='no use orignal hvddist')
+parser.set_defaults(use_hvddist=False)
+
+
 
 
 parser.add_argument('--use_debug', dest='use_debug', action='store_true',
@@ -145,12 +152,6 @@ parser.set_defaults(use_debug=False)
 
 parser.add_argument('--pruning_mode', '-pm', default=0, type=int,
                     help='prune mode')
-
-args = parser.parse_args()
-save_path = os.path.join(args.results_dir, args.save)
-moniter_file = os.path.join(save_path, 'moniters.%s')
-moniters = ResultsLog(moniter_file % 'csv', moniter_file % 'html')
-
 def main():
     hvd.init()
     size = hvd.size()
@@ -161,6 +162,24 @@ def main():
     best_prec1 = 0
     args = parser.parse_args()
 
+    if args.pruning_mode == 0:
+        print("exp mode")
+        from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
+    elif args.pruning_mode == 1:
+        print("thd mode")
+        from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
+    elif args.pruning_mode == 2:
+        print("chunck mode")
+        from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
+    elif args.pruning_mode == 3:
+        print("topk mode")
+        from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
+    else:
+        print("pruning_mode should be set correctly")
+        exit(0)
+
+
+
     if args.evaluate:
         args.results_dir = '/tmp'
     if args.save is '':
@@ -169,42 +188,17 @@ def main():
     if not os.path.exists(save_path):
         if hvd.rank() == 0:
             os.makedirs(save_path)
+        else:
+            time.sleep(1)
 
     if hvd.rank() == 0:
         setup_logging(os.path.join(save_path, 'log.txt'))
         results_file = os.path.join(save_path, 'results.%s')
         results = ResultsLog(results_file % 'csv', results_file % 'html')
 
-    if hvd.rank()== 0:
+    if hvd.rank() == 0:
         logging.info("saving to %s", save_path)
         logging.debug("run arguments: %s", args)
-
-    if args.pruning_mode == 0:
-        logging.info("exp mode")
-        from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
-    elif args.pruning_mode == 1:
-        logging.info("thd mode")
-        from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
-    elif args.pruning_mode == 2:
-        logging.info("chunck mode")
-        from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
-    elif args.pruning_mode == 3:
-        logging.info("topk mode")
-        from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
-    elif args.pruning_mode == 4:
-        logging.info("allreduce mode")
-        from hvd_utils.DGCoptimizer_allreduce import DGCDistributedOptimizer
-    elif args.pruning_mode == 5:
-        logging.info("allreduce prune mode")
-        from hvd_utils.DGCoptimizer_thd_allreduce import DGCDistributedOptimizer
-    elif args.pruning_mode == 6:
-        logging.info("thd sep mode")
-        from hvd_utils.DGCoptimizer_thd_sep import DGCDistributedOptimizer
-    else:
-        print("pruning_mode should be set correctly")
-        exit(0)
-
-
 
     if 'cuda' in args.type:
         torch.cuda.manual_seed(123 + hvd.rank())
@@ -224,8 +218,7 @@ def main():
         args.gpus = None
 
     # create model
-    if hvd.rank()== 0:
-        logging.info("creating model %s", args.model)
+    logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
     model_config = {'input_size': args.input_size, 'dataset': args.dataset, 'depth': args.resnet_depth}
 
@@ -233,8 +226,7 @@ def main():
         model_config = dict(model_config, **literal_eval(args.model_config))
 
     model = model(**model_config)
-    if hvd.rank()== 0:
-        logging.info("created model with configuration: %s", model_config)
+    logging.info("created model with configuration: %s", model_config)
 
     # optionally resume from a checkpoint
     if args.evaluate:
@@ -262,9 +254,7 @@ def main():
             logging.error("no checkpoint found at '%s'", args.resume)
 
     num_parameters = sum([l.nelement() for l in model.parameters()])
-
-    if hvd.rank() == 0:
-        logging.info("number of parameters: %d", num_parameters)
+    logging.info("number of parameters: %d", num_parameters)
 
     # Data loading code
     default_transform = {
@@ -280,8 +270,7 @@ def main():
                                            #'weight_decay': args.weight_decay
                                            }})
     adapted_regime = {}
-    if hvd.rank() == 0:
-        logging.info('self-defined momentum : %f, weight_decay : %f', args.momentum, args.weight_decay)
+    logging.info('self-defined momentum : %f, weight_decay : %f', args.momentum, args.weight_decay)
     for e, v in regime.items():
         if args.lr_bb_fix and 'lr' in v:
             # v['lr'] *= (args.batch_size / args.mini_batch_size) ** 0.5
@@ -294,34 +283,35 @@ def main():
     criterion.type(args.type)
     model.type(args.type)
 
-    val_data = get_dataset(args.dataset, 'val', transform['eval'])
-    val_loader = torch.utils.data.DataLoader(
-        val_data,
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+    #val_data = get_dataset(args.dataset, 'val', transform['eval'])
+    #val_loader = torch.utils.data.DataLoader(
+    #    val_data,
+    #    batch_size=args.batch_size, shuffle=False,
+    #    num_workers=args.workers, pin_memory=True)
+    val_loader = None
 
     if args.evaluate:
         validate(val_loader, model, criterion, 0)
         return
 
-    train_data = get_dataset(args.dataset, 'train', transform['train'])
-    train_loader = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
-
+    #train_data = get_dataset(args.dataset, 'train', transform['train'])
+    #train_loader = torch.utils.data.DataLoader(
+    #    train_data,
+    #    batch_size=args.batch_size, shuffle=True,
+    #    num_workers=args.workers, pin_memory=True)
+    train_loader = None
 
     if hvd.rank() == 0:
         logging.info('training regime: %s', regime)
-    print({i: list(w.size())
-           for (i, w) in enumerate(list(model.parameters()))})
+        print({i: list(w.size())
+               for (i, w) in enumerate(list(model.parameters()))})
     init_weights = [w.data.cpu().clone() for w in list(model.parameters())]
 
     U = []
     V = []
-    print("current rank ", hvd.rank()," local rank ", hvd.local_rank(), " USE_PRUNING ", args.use_pruning)
-    if hvd.rank() == 0:
-        print("model ", args.model, " use_nesterov ", args.use_nesterov)
+    print("current rank ", hvd.rank(), "local_rank ", hvd.local_rank(), \
+            " USE_PRUNING ", args.use_pruning)
+    print("model ", args.model, " use_nesterov ", args.use_nesterov)
 
     if args.gpus is not None:
         U = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
@@ -339,13 +329,17 @@ def main():
         else:
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
     else:
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-        #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-        #if args.gpus is not None:
-        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
-        #else:
-        #    optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+        if args.use_hvddist:
+            print("use orignal hvd DistributedOptimizer")
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4,
+                    nesterov=True)
+            optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        else:
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+            if args.gpus is not None:
+                optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=False)
+            else:
+                optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4, use_allgather=False)
 
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
@@ -356,11 +350,11 @@ def main():
             if epoch == e // hvd.size():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = v['lr']
-                logging.info('learning rate is {0}'.format(v['lr']))
                 break
 
         # train for one epoch
         train_result = train(train_loader, model, criterion, epoch, optimizer, U, V)
+        exit(1)
 
         train_loss, train_prec1, train_prec5, U, V = [
             train_result[r] for r in ['loss', 'prec1', 'prec5', 'U', 'V']]
@@ -405,7 +399,6 @@ def main():
                              train_prec1=train_prec1, val_prec1=val_prec1,
                              train_prec5=train_prec5, val_prec5=val_prec5))
 
-
         #Enable to measure more layers
         idxs = [0]#,2,4,6,7,8,9,10]#[0, 12, 45, 63]
 
@@ -415,7 +408,7 @@ def main():
 
         if(hvd.rank() == 0):
             current_time = time.time()
-            if torch.__version__ == "0.4.0":
+            if hvd.rank() == 0:
                 results.add(epoch=epoch + 1, train_loss=train_loss.cpu().numpy(), val_loss=val_loss.cpu().numpy(),
                         train_error1=100 - train_prec1.cpu().numpy(), val_error1=100 - val_prec1.cpu().numpy(),
                         train_error5=100 - train_prec5.cpu().numpy(), val_error5=100 - val_prec5.cpu().numpy(),
@@ -455,15 +448,33 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     top1 = AverageMeter()
     top5 = AverageMeter()
 
-    end = time.time()
 
-    for i, (inputs, target) in enumerate(data_loader):
+    input_var = None
+    target_var = None
+    # for i, (inputs, target) in enumerate(data_loader):
+    #     if args.gpus is not None:
+    #         target = target.cuda(async=True)
+    #     input_var = Variable(inputs.type(args.type), volatile=not training)
+    #     target_var = Variable(target)
+    #     if hvd.rank() == 0:
+    #         print(input_var.size())
+    #         print(target_var.size())
+    #     break
+    if "imagenet" in args.dataset:
+        input_var = Variable(torch.randn(args.batch_size, 3, 244, 244).cuda(), volatile=not training)
+        target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 1000).cuda())
+    elif "cifar10" in args.dataset:
+        input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
+        target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 10).cuda())
+    elif "cifar100" in args.dataset:
+        input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
+        target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 100).cuda())
+
+    torch.cuda.synchronize()
+    end = time.time()
+    for i in range(1000):
         # measure data loading time
         data_time.update(time.time() - end)
-        if args.gpus is not None:
-            target = target.cuda(async=True)
-        input_var = Variable(inputs.type(args.type), volatile=not training)
-        target_var = Variable(target)
 
         # compute output
         if not training:
@@ -494,40 +505,37 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
 
             # Master
-            if args.use_pruning:
+            if 1 and args.use_pruning:
                 pruning_time.update(optimizer.pruning_time)
                 select_time.update(optimizer.select_time)
                 comm_time.update(optimizer.pack_time)
                 optimizer.pruning_time = 0.0
                 optimizer.select_time = 0.0
                 optimizer.pack_time = 0.0
-            else:
-                pass
-                # idx = 0
-                # for p in list(model.parameters()):
-                #     # print("accumulated sparsity is", check_sparsity(g))
-                #     # TODO 1. use pytorch sgd optimizer to calculate mom and weight_decay, set mom and wd
-                #     # used with pruning
-                #     # TODO 2. implement weight_decay and momentum by myself, set mom=0 and wd = 0
-                #     # used with baseline
-                #     g = p.grad.data
-                #     g.add_(torch.mul(p.data, args.weight_decay))
-                #     V[idx] = torch.add(torch.mul(V[idx], args.momentum), g)
-                #     p.grad.data = V[idx]
-                #     idx = idx+1
-                #optimizer.synchronize()
-                #clip_grad_norm(model.parameters(), 5.)
+            # if args.use_pruning:
+            # else:
+            #     # idx = 0
+            #     # for p in list(model.parameters()):
+            #     #     # print("accumulated sparsity is", check_sparsity(g))
+            #     #     # TODO 1. use pytorch sgd optimizer to calculate mom and weight_decay, set mom and wd
+            #     #     # used with pruning
+            #     #     # TODO 2. implement weight_decay and momentum by myself, set mom=0 and wd = 0
+            #     #     # used with baseline
+            #     #     g = p.grad.data
+            #     #     g.add_(torch.mul(p.data, args.weight_decay))
+            #     #     V[idx] = torch.add(torch.mul(V[idx], args.momentum), g)
+            #     #     p.grad.data = V[idx]
+            #     #     idx = idx+1
+            #     optimizer.synchronize()
+            #     clip_grad_norm(model.parameters(), 5.)
 
             optimizer.step()
 
         # measure elapsed time
+        torch.cuda.synchronize()
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if training and i % 20 == 0:
-            if hvd.rank() == 0 and args.pruning_mode == 1:
-                moniters.add(mid=optimizer._mid, sparsity=optimizer._sparsity, it = optimizer._it)
-                moniters.save()
         if i % args.print_freq == 0:
             if hvd.rank() == 0:
                 logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
@@ -539,7 +547,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                              'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                              'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                                 epoch, i, len(data_loader),
+                                 epoch, i, 1000,
                                  phase='TRAINING' if training else 'EVALUATING',
                                  batch_time=batch_time,
                                  data_time=data_time,
