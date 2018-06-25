@@ -48,7 +48,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False #True 
+        self._debug = False #True
         self._use_allgather = use_allgather ##True
         #self._use_allgather = False##True
 
@@ -198,7 +198,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self._masks[name] = self._masks[name].view(masks_size)
 
                 if self._debug:
-                    self._v_ref[name] = self._V[name] * (1.0 - self._masks[name])
+                    self._v_ref[name] = param_state['residue_buffer'] * (1.0 - self._masks[name])
                     allreduce_(self._v_ref[name], average = False)
 
 
