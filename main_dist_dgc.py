@@ -197,6 +197,9 @@ def main():
     elif args.pruning_mode == 5:
         logging.info("allreduce prune mode")
         from hvd_utils.DGCoptimizer_thd_allreduce import DGCDistributedOptimizer
+    elif args.pruning_mode == 6:
+        logging.info("thd sep mode")
+        from hvd_utils.DGCoptimizer_thd_sep import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
