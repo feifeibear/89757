@@ -161,7 +161,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 sparsity = 0.0
                 if param_state['interval'] == 10:
                     compressed_val, compressed_idx, it, param_state['mid_store'], sparsity = \
-                            select_top_k_thdv3(param_state['residue_buffer'], 0.0005)
+                            select_top_k_thdv3(param_state['residue_buffer'], 0.001)
                     param_state['interval'] = 0
                 else:
                     compressed_val, compressed_idx, sparsity = \
