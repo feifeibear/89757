@@ -6,3 +6,4 @@ from .cifar_shallow import *
 from .mobilenetv2 import *
 from .lenet import *
 from .vgg import *
+from .vggimagenet import *

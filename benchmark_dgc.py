@@ -177,6 +177,9 @@ def main():
     elif args.pruning_mode == 6:
         print("seperate mode")
         from hvd_utils.DGCoptimizer_thd_sep import DGCDistributedOptimizer
+    elif args.pruning_mode == 7:
+        print("quant mode")
+        from hvd_utils.DGCoptimizer_quant import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
