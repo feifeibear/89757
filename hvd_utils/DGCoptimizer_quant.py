@@ -45,7 +45,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
         self._use_gpu = use_gpu
-        self._use_nesterov = False #True
+        self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False #True

@@ -45,7 +45,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
         self._use_gpu = use_gpu
-        self._use_nesterov = False
+        self._use_nesterov = True 
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False
@@ -132,16 +132,16 @@ class _DGCOptimizer(torch.optim.Optimizer):
                         buf = param_state['momentum_buffer']
                         buf.mul_(momentum).add_(1 - dampening, d_p)
                     #TODO
-                    # if nesterov:
-                    #     d_p = d_p.add(momentum, buf)
-                    # else:
-                    #     d_p = buf
                 if 'residue_buffer' not in param_state:
                     rsd = param_state['residue_buffer'] = torch.zeros_like(p.data)
                     rsd.add_(param_state['momentum_buffer'])
+                    if self._use_nesterov:
+                        rsd  = rsd.add(momentum, d_p)
                 else:
                     rsd = param_state['residue_buffer']
                     rsd.add_(param_state['momentum_buffer'])
+                    if self._use_nesterov:
+                        rsd  = rsd.add(momentum, d_p)
 
                 compressed_val = []
                 compressed_idx = []
