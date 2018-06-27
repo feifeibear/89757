@@ -48,7 +48,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False #True 
+        self._debug = False 
         self._use_allgather = use_allgather ##True
         #self._use_allgather = False##True
 
@@ -62,7 +62,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
-            self._compressed_msg = {k: torch.zeros(0, dtype=torch.long).cuda() for k, v
+            self._compressed_idx= {k: torch.zeros(0, dtype=torch.long).cuda() for k, v
                                  in sorted(named_parameters)}
             self._compressed_val = {k: torch.zeros(0).cuda() for k, v
                                  in sorted(named_parameters)}
@@ -123,6 +123,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 dampening = 0.0 #group['dampening']
                 nesterov = False #group['nesterov']
                 d_p = p.grad.data
+                d_p.div_(hvd.size())
                 if weight_decay != 0:
                     d_p.add_(weight_decay, p.data)
                 if momentum != 0:
@@ -150,10 +151,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
                 torch.cuda.synchronize()
                 begin_select_time =  time.time()
-                if 'mid_store' not in param_state:
-                    param_state['mid_store'] = 0.0
                 if 'interval' not in param_state:
-                    param_state['interval'] = 10
+                    param_state['interval'] = 1
                 it = 0
                 sparsity = 0.0
                 if param_state['interval'] == 1:
@@ -165,26 +164,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                             select_bs_bottom(param_state['residue_buffer'], 0.001)
                     param_state['interval'] = 1
                 assert(len(compressed_idx) > 0)
-                #if hvd.rank() == 0:
-                #    print(name, p.size())
-                #if hvd.rank() == 0 and name == "features.27.weight":
-                #if name == "features.27.weight":
-                #    torch.save(compressed_val, 'compressed_val' + str(local_rank()))
-                #    torch.save(compressed_idx, 'compressed_idx' + str(local_rank()))
-                #if hvd.rank() == 0 and name == "features.27.weight":
-                #    self._it = it
-                #    self._mid = param_state['mid_store']
-                #    self._sparsity = sparsity
                 torch.cuda.synchronize()
                 end_select_time =  time.time()
                 self.select_time += end_select_time - begin_select_time
-                #tmp_t = torch.tensor([local_len], dtype=torch.long)
-#                tmp_t = torch.tensor([local_len])
-                # print("len list, ", global_len_list)
-                #local_len = torch.min(global_len_list)
-                ##print("local_len, ", local_len)
-                #compressed_val = compressed_val[0:local_len]
-                #compressed_idx = compressed_idx[0:local_len]
 
                 masks_size = self._masks[name].size()
                 self._masks[name].zero_()
@@ -195,7 +177,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self._masks[name] = self._masks[name].view(masks_size)
 
                 if self._debug:
-                    self._v_ref[name] = self._V[name] * (1.0 - self._masks[name])
+                    self._v_ref[name] = torch.mean(compressed_val) \
+                            * (1.0 - self._masks[name])
                     allreduce_(self._v_ref[name], average = False)
 
 
@@ -210,14 +193,14 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 compressed_msg = []
 
                 if self._use_gpu:
-                    compressed_msg= torch.cat([\
-                            torch.tensor([len(compressed_idx)]).type('torch.cuda.LongTensor'),\
-                            compressed_idx.type('torch.cuda.FloatTensor')])
+                    compressed_msg= torch.cat((\
+                            torch.tensor([len(compressed_idx)]).type(torch.cuda.LongTensor),\
+                            compressed_idx))
 
-                handle = _allgather_async(compressed_msg, self._compressed_idx[name], name=name)
+                handle = _allgather_async(compressed_msg, self._compressed_idx[name], name=name + "idx")
                 self._handles[p] = handle
 
-                handle = _allgather_async(torch.mean(compressed_val), self._compressed_val[name], name=name)
+                handle = _allgather_async(torch.mean(compressed_val), self._compressed_val[name], name=name + "val")
                 self._handles_val[p] = handle
 
                 torch.cuda.synchronize()
@@ -263,26 +246,22 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 g_size = p.grad.data.size()
                 p_flatten = p.grad.data.view(-1)
                 p_flatten.zero_()
-                #print("p_flatten size is ,", p_flatten.size())
-                #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
-                #print("hand is ", handle)
                 offset = 0
                 for node_idx in range(hvd.size()):
                     if self._use_gpu:
-                        msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
+                        msg_size = self._compressed_idx[name][offset]
                         offset += 1
-                        p_flatten[self._compressed_msg[name][ offset: \
+                        p_flatten[self._compressed_idx[name][ offset: \
                                 offset + msg_size]] += \
                                 self._compressed_val[name][node_idx]
                         offset += msg_size;
 
+                p.grad.data = p_flatten.view(g_size)
                 torch.cuda.synchronize()
                 self.pack_time += time.time() - begin_pack_time
-
-                p.grad.data = p.grad.data.view(g_size)
                 if self._debug:
                     diff = torch.sum(self._v_ref[name] - p.grad.data)
-                    if( torch.abs(diff) > 1e-6 ):
+                    if( torch.abs(diff) > 1e-3 ):
                         print("error diff is, ", diff, name, p.size())
 
             torch.cuda.synchronize()
@@ -290,6 +269,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
             self.pruning_time += end_time - begin_time
 
         self._handles.clear()
+        self._handles_val.clear()
 
     def step(self, closure=None):
         self.synchronize()

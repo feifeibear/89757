@@ -45,10 +45,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
         self._use_gpu = use_gpu
-        self._use_nesterov = True
+        self._use_nesterov = False #True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False
+        self._debug = False #True
         self._use_allgather = use_allgather 
 
         # define U for residue, V for momentum
@@ -144,7 +144,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self.select_time += end_select_time - begin_select_time
 
                 if self._debug:
-                    self._v_ref[name] = self._V[name] * self._masks[name]
+                    self._v_ref[name] = torch.mean(compressed_val) * (1.0 - self._masks[name])
                     allreduce_(self._v_ref[name], average = False)
 
                 #self._V[name] = self._V[name] * (1 - self._masks[name])
@@ -224,7 +224,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                     self._compressed_val[name][node_idx]
                     p.grad.data = p.grad.data.view(g_size)
                     if self._debug:
-                        print("diff : ", torch.sum(self._v_ref[name] - p.grad.data))
+                        diff = torch.sum(self._v_ref[name] - p.grad.data)
+                        if torch.abs(diff) > 1e-3:
+                            print(diff, name)
 
                 torch.cuda.synchronize()
                 end_comm_time =  time.time()

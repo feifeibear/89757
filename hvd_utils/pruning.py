@@ -224,8 +224,8 @@ def select_bs_bottom(x, pruning_ratio, l = 0.0, r = 1.0, param = 20.0):
         x_len *= dim
     x_flatten = x.view(-1)
     top_k = int(x_len * pruning_ratio) + 1
-    min_val = torch.min(x)
-    mean_val = torch.mean(x)
+    min_val = torch.min(x_flatten)
+    mean_val = torch.mean(x_flatten)
 
     rough_indices = []
     mid = 0.0
@@ -242,9 +242,9 @@ def select_bs_bottom(x, pruning_ratio, l = 0.0, r = 1.0, param = 20.0):
         if N > top_k / 2 and N < top_k * 2:
             break
         if N < top_k:
-            r = mid
-        else:
             l = mid
+        else:
+            r = mid
         it+=1
     rough_val = torch.index_select(x_flatten, 0, rough_indices)
     return rough_val, rough_indices, it, mid, N/x_len
@@ -258,8 +258,8 @@ def select_bs_top(x, pruning_ratio, l = 0.0, r = 1.0, param = 20.0):
         x_len *= dim
     x_flatten = x.view(-1)
     top_k = int(x_len * pruning_ratio) + 1
-    max_val = torch.max(x)
-    mean_val = torch.mean(x)
+    max_val = torch.max(x_flatten)
+    mean_val = torch.mean(x_flatten)
     #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
 
     # roughly select top
@@ -272,7 +272,7 @@ def select_bs_top(x, pruning_ratio, l = 0.0, r = 1.0, param = 20.0):
     while (r - l) > eps:
         mid = l + (r - l)/2
         threshold = mean_val + mid * (max_val - mean_val)
-        x_sparse = x > threshold
+        x_sparse = x_flatten > threshold
         rough_indices = torch.nonzero(x_sparse).view(-1)
         N = len(rough_indices)
         if N > top_k / 2 and N < top_k * 2:
@@ -549,9 +549,24 @@ def prune_perc_sample(x, perc):
     return mask
 
 
+def test():
+    x = torch.randn(256, 128, 3, 3).cuda()
+    #xs = torch.sort(x)
+    #print(xs)
+    val , idx, _, _, _ = select_bs_bottom(x, 0.001)
+    print(val)
+    print(idx)
+    val , idx, _, _, _ = select_bs_top(x, 0.001)
+    print(val)
+    print(idx)
+#    ret =torch.cat((torch.tensor([10]).type(torch.cuda.LongTensor), idx))
+#    print(ret)
+
 
 if __name__ == '__main__':
     torch.manual_seed(123)
+    test()
+    exit(0)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])

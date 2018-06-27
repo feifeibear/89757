@@ -45,10 +45,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
         self._use_gpu = use_gpu
-        self._use_nesterov = True
+        self._use_nesterov = True #False #True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False
+        self._debug = False #True 
         self._use_allgather = use_allgather 
 
         # define U for residue, V for momentum
@@ -146,9 +146,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 if hvd.size() > 1:
                     self._compressed_msg_size[name] = len(compressed_idx)
                     if self._use_gpu:
-                        compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
+                        compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), \
+                                compressed_val])
                     else:
-                        compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
+                        compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), \
+                                compressed_val])
 
                     handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                     self._handles[p] = handle

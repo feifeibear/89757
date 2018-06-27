@@ -45,10 +45,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
         self._use_gpu = use_gpu
-        self._use_nesterov = True
+        self._use_nesterov = False
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False #True 
+        self._debug = False
         self._use_allgather = use_allgather ##True
         #self._use_allgather = False##True
 
@@ -120,6 +120,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 dampening = 0.0 #group['dampening']
                 nesterov = False #group['nesterov']
                 d_p = p.grad.data
+                d_p.div_(hvd.size())
                 if weight_decay != 0:
                     d_p.add_(weight_decay, p.data)
                 if momentum != 0:
@@ -153,14 +154,16 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     param_state['interval'] = 10
                 it = 0
                 sparsity = 0.0
-                if param_state['interval'] == 10:
-                    compressed_val, compressed_idx, it, param_state['mid_store'], sparsity = \
-                            select_top_k_thdv3(param_state['residue_buffer'], 0.001)
-                    param_state['interval'] = 0
-                else:
-                    compressed_val, compressed_idx, sparsity = \
-                            select_top_k_fixthd(param_state['residue_buffer'], param_state['mid_store'])
-                    param_state['interval'] += 1
+                compressed_val, compressed_idx, it, _, sparsity = \
+                    select_top_k_thdv3(param_state['residue_buffer'], 0.001)
+                #if param_state['interval'] == 10:
+                #    compressed_val, compressed_idx, it, param_state['mid_store'], sparsity = \
+                #            select_top_k_thdv3(param_state['residue_buffer'], 0.001)
+                #    param_state['interval'] = 0
+                #else:
+                #    compressed_val, compressed_idx, sparsity = \
+                #            select_top_k_fixthd(param_state['residue_buffer'], param_state['mid_store'])
+                #    param_state['interval'] += 1
                 assert(len(compressed_idx) > 0)
                 #if hvd.rank() == 0:
                 #    print(name, p.size())
@@ -192,7 +195,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self._masks[name] = self._masks[name].view(masks_size)
 
                 if self._debug:
-                    self._v_ref[name] = self._V[name] * (1.0 - self._masks[name])
+                    self._v_ref[name] = param_state['residue_buffer'] * (1.0 - self._masks[name])
                     allreduce_(self._v_ref[name], average = False)
 
 
@@ -249,8 +252,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
             if self._use_allgather and p_size > 1024:
                 #fjr decompress
                 name = self._parameter_names.get(p)
-                #msg_size = self._compressed_msg_size[name]
-                #print("rank, msg_size is ", hvd.local_rank(), msg_size)
 
                 torch.cuda.synchronize()
                 begin_pack_time =  time.time()
@@ -283,10 +284,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 torch.cuda.synchronize()
                 self.pack_time += time.time() - begin_pack_time
 
-                p.grad.data = p.grad.data.view(g_size)
+                p.grad.data = p_flatten.view(g_size)
                 if self._debug:
                     diff = torch.sum(self._v_ref[name] - p.grad.data)
-                    if( torch.abs(diff) > 1e-6 ):
+                    if( torch.abs(diff) > 1e-3 ):
                         print("error diff is, ", diff, name, p.size())
 
             torch.cuda.synchronize()

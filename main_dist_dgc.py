@@ -345,7 +345,7 @@ def main():
         else:
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
     else:
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
         optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
         #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
         #if args.gpus is not None:
