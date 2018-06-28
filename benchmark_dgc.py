@@ -1,4 +1,5 @@
 import pdb
+import sys
 import argparse
 import os
 import time
@@ -32,7 +33,7 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ConvNet Training')
 
 parser.add_argument('--results_dir', metavar='RESULTS_DIR',
-                    default='./Results/dist', help='results dir')
+                    default='./Results/benchmark', help='results dir')
 parser.add_argument('--save', metavar='SAVE', default='',
                     help='saved folder')
 parser.add_argument('--dataset', metavar='DATASET', default='cifar10',
@@ -178,8 +179,11 @@ def main():
         print("seperate mode")
         from hvd_utils.DGCoptimizer_thd_sep import DGCDistributedOptimizer
     elif args.pruning_mode == 7:
-        print("quant mode")
+        print("topk quant mode")
         from hvd_utils.DGCoptimizer_quant import DGCDistributedOptimizer
+    elif args.pruning_mode == 8:
+        print("topk quant mode")
+        from hvd_utils.DGCoptimizer_thd_quant import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
@@ -360,7 +364,7 @@ def main():
 
         # train for one epoch
         train_result = train(train_loader, model, criterion, epoch, optimizer, U, V)
-        exit(1)
+        sys.exit()
 
         train_loss, train_prec1, train_prec5, U, V = [
             train_result[r] for r in ['loss', 'prec1', 'prec5', 'U', 'V']]
@@ -478,7 +482,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
     torch.cuda.synchronize()
     end = time.time()
-    for i in range(1000):
+    for i in range(200):
         # measure data loading time
         data_time.update(time.time() - end)
 
