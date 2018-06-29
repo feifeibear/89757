@@ -84,6 +84,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
         self.pruning_time = 0.0
         self.select_time = 0.0
+        self.pack_time = 0.0
 
         if size() > 1:
             self._register_hooks()
@@ -132,12 +133,15 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 end_select_time =  time.time()
                 self.select_time += end_select_time - begin_select_time
 
+                masks_size = self._masks[name].size()
                 self._masks[name].zero_()
+                self._masks[name] = self._masks[name].view(-1)
                 self._masks[name][compressed_idx] = 1.0
                 self._masks[name] = 1.0 - self._masks[name]
+                self._masks[name] = self._masks[name].view(masks_size)
 
                 if self._debug:
-                    self._v_ref[name] = self._V[name] * self._masks[name]
+                    self._v_ref[name] = self._V[name] * (1.0 - self._masks[name])
                     allreduce_(self._v_ref[name], average = False)
 
                 #self._V[name] = self._V[name] * (1 - self._masks[name])
@@ -145,10 +149,16 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self._V[name].mul_(self._masks[name])
                 self._U[name].mul_(self._masks[name])
 
+                torch.cuda.synchronize()
+                begin_pack_time =  time.time()
+
                 p.grad.zero_()
                 p.grad.data[compressed_idx] = self._V[name][compressed_idx]
                 handle = allreduce_async_(p.grad.data[compressed_idx], average=False, name=name)
                 self._handles[p] = handle
+
+                torch.cuda.synchronize()
+                self.pack_time += time.time() - begin_pack_time
             else:
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:

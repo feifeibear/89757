@@ -48,18 +48,12 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
-        self._debug = False 
+        self._debug = False
         self._use_allgather = use_allgather ##True
         #self._use_allgather = False##True
 
         # define U for residue, V for momentum
         if self._use_gpu:
-            self._V = {k: torch.zeros(v.size()).cuda() for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()).cuda() for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()).cuda() for k, v
-                                     in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
             self._compressed_idx= {k: torch.zeros(0, dtype=torch.long).cuda() for k, v
@@ -67,12 +61,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
             self._compressed_val = {k: torch.zeros(0).cuda() for k, v
                                  in sorted(named_parameters)}
         else:
-            self._V = {k: torch.zeros(v.size()) for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()) for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()) for k, v
-                                     in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
             self._compressed_msg = {k: torch.zeros(0) for k, v
@@ -213,14 +201,32 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self.pack_time += time.time() - begin_pack_time
 
             else:
-                p.grad.data.add_(torch.mul(p.data, self._weight_decay))
-                if self._use_nesterov:
-                    self._U[name] = torch.mul(torch.add(self._U[name], p.grad.data), self._momentum)
-                    self._V[name] = self._V[name] + self._U[name] + p.grad.data
+                weight_decay = self._weight_decay #group['weight_decay']
+                momentum = self._momentum #group['momentum']
+                dampening = 0.0 #group['dampening']
+                d_p = p.grad.data
+                if weight_decay != 0:
+                    d_p.add_(weight_decay, p.data)
+                if momentum != 0:
+                    param_state = self.state[p]
+                    if 'momentum_buffer' not in param_state:
+                        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                        buf.mul_(momentum).add_(d_p)
+                    else:
+                        buf = param_state['momentum_buffer']
+                        buf.mul_(momentum).add_(1 - dampening, d_p)
+                    #TODO
+                if 'residue_buffer' not in param_state:
+                    rsd = param_state['residue_buffer'] = torch.zeros_like(p.data)
+                    rsd.add_(param_state['momentum_buffer'])
+                    if self._use_nesterov:
+                        rsd  = rsd.add(momentum, d_p)
                 else:
-                    self._U[name] = self._momentum * self._U[name] + p.grad.data
-                    self._V[name] = self._V[name] + self._U[name]
-                p.grad.data = self._V[name]
+                    rsd = param_state['residue_buffer']
+                    rsd.add_(param_state['momentum_buffer'])
+                    if self._use_nesterov:
+                        rsd  = rsd.add(momentum, d_p)
+                p.grad.data = param_state['residue_buffer']
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 handle = allreduce_async_(p.grad.data, average=True, name=name)

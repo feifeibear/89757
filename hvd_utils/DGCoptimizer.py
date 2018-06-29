@@ -57,16 +57,12 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._U = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()).cuda() for k, v
-                                     in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
             self._compressed_msg = {k: torch.zeros(0).cuda() for k, v
                                  in sorted(named_parameters)}
         else:
             self._V = {k: torch.zeros(v.size()) for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
             self._U = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}

@@ -57,8 +57,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._U = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()).cuda() for k, v
-                                     in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
             self._compressed_idx = {k: torch.zeros(0, dtype=torch.long).cuda() for k, v
@@ -67,8 +65,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                  in sorted(named_parameters)}
         else:
             self._V = {k: torch.zeros(v.size()) for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
             self._U = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
@@ -84,7 +80,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                  in sorted(named_parameters)}
         self._v_ref = {k: [] for k, v
                                  in sorted(named_parameters)}
-        self._flag = {k: 0 for k, v
+        self._flag = {k: 1 for k, v
                                  in sorted(named_parameters)}
 
         self._handles = {}
@@ -132,11 +128,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #self._masks[name], compressed_val, compressed_idx = select_top_k_appr(self._V[name], 0.001, self._masks[name])
                 if self._flag[name] == 1:
                     self._masks[name], compressed_val, compressed_idx = \
-                        select_topk_truncated_mean(self._V[name], 0.001, self._masks[name])
+                        select_topk_truncated_mean(self._V[name], 0.002, self._masks[name])
                     self._flag[name] = 0
                 else:
                     self._masks[name], compressed_val, compressed_idx = \
-                        select_lowk_truncated_mean(self._V[name], 0.001, self._masks[name])
+                        select_lowk_truncated_mean(self._V[name], 0.002, self._masks[name])
                     self._flag[name] = 1
 
                 torch.cuda.synchronize()
@@ -160,10 +156,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
 
                 if hvd.size() > 1:
                     self._compressed_msg_size[name] = len(compressed_idx)
-                    #if self._use_gpu:
-                    #    compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), compressed_val])
-                    #else:
-                    #    compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), compressed_val])
 
                     handle = _allgather_async(compressed_idx, self._compressed_idx[name], name = name+"idx")
                     self._handles[p] = handle
@@ -207,16 +199,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 if self._use_allgather and p_size > 1024:
                     handle = self._handles_val[p]
                     synchronize(handle)
-                    #fjr decompress
                     name = self._parameter_names.get(p)
                     msg_size = self._compressed_msg_size[name]
-                    #print("rank, msg_size is ", hvd.local_rank(), msg_size)
                     g_size = p.grad.data.size()
                     p_flatten = p.grad.data.view(-1)
                     p_flatten.zero_()
-                    #print("p_flatten size is ,", p_flatten.size())
-                    #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
-                    #print("hand is ", handle)
                     for node_idx in range(hvd.size()):
                         if self._use_gpu:
                             p_flatten[self._compressed_idx[name][node_idx*msg_size : \

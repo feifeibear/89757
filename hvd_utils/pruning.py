@@ -565,12 +565,12 @@ def test():
 
 if __name__ == '__main__':
     torch.manual_seed(123)
-    test()
-    exit(0)
+    #test()
+    #exit(0)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    #x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])
-    #x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(2048, 2048) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(14000000,) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     x = x.cuda()
