@@ -45,7 +45,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._parameter_names = {v: k for k, v
                                  in sorted(named_parameters)}
         self._use_gpu = use_gpu
-        self._use_nesterov = True 
+        self._use_nesterov = True
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False
@@ -81,8 +81,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._sparsity = 0.0
         self._it = 0
 
-        if size() > 1:
-            self._register_hooks()
+        #if size() > 1:
+        self._register_hooks()
 
     def _register_hooks(self):
         for param_group in self.param_groups:
@@ -186,27 +186,27 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     allreduce_(self._v_ref[name], average = False)
 
 
+                if hvd.size() == 1:
+                    p.grad.data = param_state['residue_buffer'] * (1.0 - self._masks[name])
+
                 param_state['residue_buffer'].mul_(self._masks[name])
                 param_state['momentum_buffer'].mul_(self._masks[name])
 
                 torch.cuda.synchronize()
                 begin_pack_time =  time.time()
 
-                if self._use_gpu:
-                    compressed_msg = torch.cat([\
-                            torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),\
-                            compressed_idx.type('torch.cuda.FloatTensor'), \
-                            compressed_val])
-                else:
-                    compressed_msg = torch.cat([torch.tensor([len(compressed_idx)]).type('torch.FloatTensor'),compressed_idx.type('torch.FloatTensor'), compressed_val])
+                if hvd.size() > 1:
+                    if self._use_gpu:
+                        compressed_msg = torch.cat([\
+                                torch.tensor([len(compressed_idx)]).type('torch.cuda.FloatTensor'),\
+                                compressed_idx.type('torch.cuda.FloatTensor'), \
+                                compressed_val])
 
-                handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
-                #compressed_msg = torch.randn(100).cuda()
-                self._handles[p] = handle
+                    handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+                    self._handles[p] = handle
 
                 torch.cuda.synchronize()
                 self.pack_time += time.time() - begin_pack_time
-
             else:
                 weight_decay = self._weight_decay #group['weight_decay']
                 momentum = self._momentum #group['momentum']
@@ -236,8 +236,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 p.grad.data = param_state['residue_buffer']
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
-                handle = allreduce_async_(p.grad.data, average=True, name=name)
-                self._handles[p] = handle
+                if hvd.size() > 1:
+                    handle = allreduce_async_(p.grad.data, average=True, name=name)
+                    self._handles[p] = handle
             torch.cuda.synchronize()
             end_time = time.time()
             self.pruning_time += end_time - begin_time
@@ -245,56 +246,57 @@ class _DGCOptimizer(torch.optim.Optimizer):
         return hook
 
     def synchronize(self):
-        for p in self._handles:
-            handle = self._handles[p]
-            synchronize(handle)
-            torch.cuda.synchronize()
-            begin_time = time.time()
-            p_size = np.prod(p.size())
-            if self._use_allgather and p_size > 1024:
-                #fjr decompress
-                name = self._parameter_names.get(p)
+        if hvd.size() > 1:
+            for p in self._handles:
+                handle = self._handles[p]
+                synchronize(handle)
+                torch.cuda.synchronize()
+                begin_time = time.time()
+                p_size = np.prod(p.size())
+                if self._use_allgather and p_size > 1024:
+                    #fjr decompress
+                    name = self._parameter_names.get(p)
+
+                    torch.cuda.synchronize()
+                    begin_pack_time =  time.time()
+
+                    g_size = p.grad.data.size()
+                    p_flatten = p.grad.data.view(-1)
+                    p_flatten.zero_()
+                    #print("p_flatten size is ,", p_flatten.size())
+                    #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
+                    #print("hand is ", handle)
+                    offset = 0
+                    for node_idx in range(hvd.size()):
+                        if self._use_gpu:
+                            msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
+                            offset += 1
+                            p_flatten[self._compressed_msg[name][ offset: \
+                                    offset + msg_size].type('torch.cuda.LongTensor')] += \
+                                    self._compressed_msg[name][offset + msg_size : \
+                                    offset + 2*msg_size]
+                            offset += msg_size * 2;
+                        else:
+                            msg_size = self._compressed_msg[name][offset].type('torch.LongTensor')
+                            offset += 1
+                            p_flatten[self._compressed_msg[name][ offset: \
+                                    offset + msg_size].type('torch.LongTensor')] += \
+                                    self._compressed_msg[name][offset + msg_size : \
+                                    offset + 2*msg_size]
+                            offset += msg_size * 2;
+
+                    torch.cuda.synchronize()
+                    self.pack_time += time.time() - begin_pack_time
+
+                    p.grad.data = p_flatten.view(g_size)
+                    if self._debug:
+                        diff = torch.sum(self._v_ref[name] - p.grad.data)
+                        if( torch.abs(diff) > 1e-3 ):
+                            print("error diff is, ", diff, name, p.size())
 
                 torch.cuda.synchronize()
-                begin_pack_time =  time.time()
-
-                g_size = p.grad.data.size()
-                p_flatten = p.grad.data.view(-1)
-                p_flatten.zero_()
-                #print("p_flatten size is ,", p_flatten.size())
-                #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
-                #print("hand is ", handle)
-                offset = 0
-                for node_idx in range(hvd.size()):
-                    if self._use_gpu:
-                        msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
-                        offset += 1
-                        p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_size].type('torch.cuda.LongTensor')] += \
-                                self._compressed_msg[name][offset + msg_size : \
-                                offset + 2*msg_size]
-                        offset += msg_size * 2;
-                    else:
-                        msg_size = self._compressed_msg[name][offset].type('torch.LongTensor')
-                        offset += 1
-                        p_flatten[self._compressed_msg[name][ offset: \
-                                offset + msg_size].type('torch.LongTensor')] += \
-                                self._compressed_msg[name][offset + msg_size : \
-                                offset + 2*msg_size]
-                        offset += msg_size * 2;
-
-                torch.cuda.synchronize()
-                self.pack_time += time.time() - begin_pack_time
-
-                p.grad.data = p_flatten.view(g_size)
-                if self._debug:
-                    diff = torch.sum(self._v_ref[name] - p.grad.data)
-                    if( torch.abs(diff) > 1e-3 ):
-                        print("error diff is, ", diff, name, p.size())
-
-            torch.cuda.synchronize()
-            end_time = time.time()
-            self.pruning_time += end_time - begin_time
+                end_time = time.time()
+                self.pruning_time += end_time - begin_time
 
         self._handles.clear()
 

@@ -206,6 +206,9 @@ def main():
     elif args.pruning_mode == 8:
         logging.info("thd quant mode")
         from hvd_utils.DGCoptimizer_thd_quant import DGCDistributedOptimizer
+    elif args.pruning_mode == 9:
+        logging.info("param mode")
+        from hvd_utils.DGCoptimizer_param import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
@@ -364,6 +367,12 @@ def main():
                     param_group['lr'] = v['lr']
                 logging.info('learning rate is {0}'.format(v['lr']))
                 break
+        if args.use_warmup:
+            if epoch == 0:
+                optimizer._use_allgather = False
+            else:
+                optimizer._use_allgather = True
+
 
         # train for one epoch
         train_result = train(train_loader, model, criterion, epoch, optimizer, U, V)

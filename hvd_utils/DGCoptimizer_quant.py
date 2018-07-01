@@ -128,11 +128,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #self._masks[name], compressed_val, compressed_idx = select_top_k_appr(self._V[name], 0.001, self._masks[name])
                 if self._flag[name] == 1:
                     self._masks[name], compressed_val, compressed_idx = \
-                        select_topk_truncated_mean(self._V[name], 0.002, self._masks[name])
+                        select_topk_truncated_mean(self._V[name], 0.001, self._masks[name])
                     self._flag[name] = 0
                 else:
                     self._masks[name], compressed_val, compressed_idx = \
-                        select_lowk_truncated_mean(self._V[name], 0.002, self._masks[name])
+                        select_lowk_truncated_mean(self._V[name], 0.001, self._masks[name])
                     self._flag[name] = 1
 
                 torch.cuda.synchronize()
