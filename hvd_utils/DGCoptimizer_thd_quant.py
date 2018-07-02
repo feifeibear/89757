@@ -216,18 +216,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     else:
                         buf = param_state['momentum_buffer']
                         buf.mul_(momentum).add_(1 - dampening, d_p)
-                    #TODO
-                if 'residue_buffer' not in param_state:
-                    rsd = param_state['residue_buffer'] = torch.zeros_like(p.data)
-                    rsd.add_(param_state['momentum_buffer'])
                     if self._use_nesterov:
-                        rsd  = rsd.add(momentum, d_p)
-                else:
-                    rsd = param_state['residue_buffer']
-                    rsd.add_(param_state['momentum_buffer'])
-                    if self._use_nesterov:
-                        rsd  = rsd.add(momentum, d_p)
-                p.grad.data = param_state['residue_buffer']
+                        d_p = d_p.add(momentum, buf)
+                    else:
+                        d_p = buf
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 if hvd.size() > 1:

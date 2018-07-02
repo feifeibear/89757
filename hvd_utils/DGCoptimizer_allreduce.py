@@ -157,11 +157,12 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
                     self._U[name] = torch.mul(torch.add(self._U[name], p.grad.data), self._momentum)
-                    self._V[name] = self._V[name] + self._U[name] + p.grad.data
+                    #self._V[name] = self._U[name] + p.grad.data
+                    p.grad.data = self._U[name] + p.grad.data
                 else:
                     self._U[name] = self._momentum * self._U[name] + p.grad.data
-                    self._V[name] = self._V[name] + self._U[name]
-                p.grad.data = self._V[name]
+                    #self._V[name] = self._U[name]
+                    p.grad.data = self._U[name]
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 if hvd.size() > 1:
