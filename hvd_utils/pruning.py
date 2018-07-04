@@ -469,6 +469,44 @@ def trunck_topk_param(x, r, pruning_ratio, mask):
     return mask, r_val, x_idx
 
 
+def select_top_k_truncked(x, pruning_ratio, mask):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    max_val = torch.max(torch.abs(x))
+    mean_val = torch.mean(torch.abs(x))
+    #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
+
+    # roughly select top
+    param = 0.9
+    rough_indices = []
+    while len(rough_indices) < top_k:
+        threshold = mean_val + param * (max_val - mean_val)
+        x_sparse = torch.abs(x_flatten) > threshold
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        param -= 0.1
+    #print(param)
+
+    rough_val = torch.index_select(torch.abs(x_flatten), 0, rough_indices)
+
+    #print(len(rough_indices), top_k)
+    _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
+    x_idx = torch.index_select(rough_indices, 0, fine_indices)
+    x_val = torch.index_select(x_flatten, 0, x_idx)
+
+    mask = mask.view(-1)
+    mask.zero_()
+    mask[x_idx] = 1.0
+    mask = 1.0 - mask
+    mask = mask.view(x_size)
+    return mask, x_val, x_idx
+
+
+
 
 
 def select_top_k_thd(x, pruning_ratio, mask):
@@ -587,24 +625,78 @@ def prune_perc_sample(x, perc):
     return mask
 
 
-def test():
-    x = torch.randn(256, 128, 3, 3).cuda()
+def test_decompress():
+    s = 1024
+    len_list = []
+    time_list = []
+
+    for i in range(18):
+        x_len = 1024 * (2**i)
+        x = torch.randn(x_len).cuda()
+        val_ref, idx_ref = torch.topk(x, int(x_len*0.001)+1, 0, largest=True, sorted=False)
+        torch.cuda.synchronize()
+        start = time()
+        for it in range(100):
+            x[idx_ref] += val_ref
+            #max_val = torch.max(x)
+            #mean_val = torch.mean(x)
+            #thd = mean_val + 0.5 * (max_val - mean_val)
+            #x_sparse = x > thd
+            #rough_indices = torch.nonzero(x).view(-1)
+            #x_idx = torch.index_select(x, 0, rough_indices)
+            #val_ref, idx_ref = torch.topk(x, int(x_len*0.001)+1, 0, largest=True, sorted=False)
+        torch.cuda.synchronize()
+        stop = time()
+        len_list.append(x_len)
+        time_list.append(((stop-start)))
+        print("x_len is, ", x_len)
+        print("1. select mean run time : ", str((stop-start)), "s")
+        #print("sparsity is, ", len(idx_ref) / x_len)
+    print(len_list)
+    print(time_list)
     #xs = torch.sort(x)
     #print(xs)
-    val , idx, _, _, _ = select_bs_bottom(x, 0.001)
-    print(val)
-    print(idx)
-    val , idx, _, _, _ = select_bs_top(x, 0.001)
-    print(val)
-    print(idx)
-#    ret =torch.cat((torch.tensor([10]).type(torch.cuda.LongTensor), idx))
+    #    ret =torch.cat((torch.tensor([10]).type(torch.cuda.LongTensor), idx))
+#    print(ret)
+
+
+def test_select():
+    s = 1024
+    len_list = []
+    time_list = []
+
+    for i in range(18):
+        x_len = 1024 * (2**i)
+        x = torch.randn(x_len).cuda()
+        torch.cuda.synchronize()
+        start = time()
+        for it in range(100):
+            max_val = torch.max(x)
+            mean_val = torch.mean(x)
+            thd = mean_val + 0.5 * (max_val - mean_val)
+            x_sparse = x > thd
+            rough_indices = torch.nonzero(x).view(-1)
+            x_idx = torch.index_select(x, 0, rough_indices)
+            #val_ref, idx_ref = torch.topk(x, int(x_len*0.001)+1, 0, largest=True, sorted=False)
+        torch.cuda.synchronize()
+        stop = time()
+        len_list.append(x_len)
+        time_list.append(((stop-start)))
+        print("x_len is, ", x_len)
+        print("1. select mean run time : ", str((stop-start)), "s")
+        #print("sparsity is, ", len(idx_ref) / x_len)
+    print(len_list)
+    print(time_list)
+    #xs = torch.sort(x)
+    #print(xs)
+    #    ret =torch.cat((torch.tensor([10]).type(torch.cuda.LongTensor), idx))
 #    print(ret)
 
 
 if __name__ == '__main__':
     torch.manual_seed(123)
-    #test()
-    #exit(0)
+    test_decompress()
+    exit(0)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(100, 100) #FloatTensor([[1, 2, 3], [4, 5, 6]])
