@@ -106,8 +106,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             begin_time =  time.time()
             if self._use_allgather and p_size > 1024:
                 # fjr compress grad
-                p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 p.grad.data.div_(hvd.size())
+                p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
                     self._U[name] = torch.mul(torch.add(self._U[name], p.grad.data), self._momentum)
                     self._V[name] = self._V[name] + self._U[name] + p.grad.data
@@ -156,6 +156,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 self.pack_time += end_comm_time - begin_comm_time
 
             else:
+                p.grad.data.div_(hvd.size())
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 if self._use_nesterov:
                     self._U[name] = torch.mul(torch.add(self._U[name], p.grad.data), self._momentum)
@@ -169,7 +170,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                 if hvd.size() > 1:
-                    handle = allreduce_async_(p.grad.data, average=True, name=name)
+                    handle = allreduce_async_(p.grad.data, average=False, name=name)
                     self._handles[p] = handle
 
             torch.cuda.synchronize()
