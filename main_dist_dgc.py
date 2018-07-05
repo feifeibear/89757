@@ -209,6 +209,9 @@ def main():
     elif args.pruning_mode == 9:
         logging.info("param mode")
         from hvd_utils.DGCoptimizer_param import DGCDistributedOptimizer
+    elif args.pruning_mode == 10:
+        logging.info("param mode")
+        from hvd_utils.DGCoptimizer_hybrid import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
