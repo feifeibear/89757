@@ -163,32 +163,26 @@ def main():
     best_prec1 = 0
     args = parser.parse_args()
 
-    if args.pruning_mode == 0:
-        print("exp mode")
-        from hvd_utils.DGCoptimizer_exp import DGCDistributedOptimizer
-    elif args.pruning_mode == 1:
+    if args.pruning_mode == 1:
         print("thd mode")
         from hvd_utils.DGCoptimizer_thd import DGCDistributedOptimizer
-    elif args.pruning_mode == 2:
-        print("chunck mode")
-        from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
-    elif args.pruning_mode == 3:
-        print("topk mode")
-        from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
-    elif args.pruning_mode == 6:
-        print("seperate mode")
-        from hvd_utils.DGCoptimizer_thd_sep import DGCDistributedOptimizer
-    elif args.pruning_mode == 7:
-        print("topk quant mode")
-        from hvd_utils.DGCoptimizer_quant import DGCDistributedOptimizer
-    elif args.pruning_mode == 8:
-        print("topk quant mode")
-        from hvd_utils.DGCoptimizer_thd_quant import DGCDistributedOptimizer
-    elif args.pruning_mode == 9:
-        logging.info("param mode")
-        from hvd_utils.DGCoptimizer_param import DGCDistributedOptimizer
+    #elif args.pruning_mode == 2:
+    #    print("chunck mode")
+    #    from hvd_utils.DGCoptimizer_chunck import DGCDistributedOptimizer
+    #elif args.pruning_mode == 3:
+    #    print("topk mode")
+    #    from hvd_utils.DGCoptimizer import DGCDistributedOptimizer
+    #elif args.pruning_mode == 6:
+    #    print("seperate mode")
+    #    from hvd_utils.DGCoptimizer_thd_sep import DGCDistributedOptimizer
+    #elif args.pruning_mode == 7:
+    #    print("topk quant mode")
+    #    from hvd_utils.DGCoptimizer_quant import DGCDistributedOptimizer
+    #elif args.pruning_mode == 8:
+    #    print("topk quant mode")
+    #    from hvd_utils.DGCoptimizer_thd_quant import DGCDistributedOptimizer
     elif args.pruning_mode == 10:
-        logging.info("param mode")
+        print("hybrid mode")
         from hvd_utils.DGCoptimizer_hybrid import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
