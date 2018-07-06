@@ -49,8 +49,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False
-        #self._use_allgather = use_allgather ##True
-        self._use_allgather = False##True
+        self._use_allgather = use_allgather ##True
+        #self._use_allgather = False##True
 
         # define U for residue, V for momentum
         if self._use_gpu:
@@ -84,7 +84,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._sparsity = 0.0
         self._it = 0
         self._plan3 = 4194304
-        self._plan2 = 1048576
+        self._plan2 = 131072
         self._plan1 = 10240
 
         #if size() > 1:
@@ -238,11 +238,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     param_state['momentum_buffer'] = torch.zeros_like(p.data)
                 if self._use_nesterov:
                     param_state['momentum_buffer'] = torch.mul(torch.add(param_state['momentum_buffer'], p.grad.data), self._momentum)
-                    #self._V[name] = self._V[name] + self._U[name] + p.grad.data
                     p.grad.data = param_state['momentum_buffer'] + p.grad.data
                 else:
                     param_state['momentum_buffer']= self._momentum * param_state['momentum_buffer'] + p.grad.data
-                    #self._V[name] = self._V[name] + self._U[name]
                     p.grad.data = param_state['momentum_buffer']
                 if hvd.size() > 1:
                     handle = allreduce_async_(p.grad.data, average=False, name=name)

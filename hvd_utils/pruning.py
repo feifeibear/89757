@@ -715,7 +715,7 @@ def comparse_select():
         torch.cuda.synchronize()
         start = time()
         for it in range(100):
-            select_top_k_thdv3
+            pass
             #max_val = torch.max(x)
             #mean_val = torch.mean(x)
             #thd = mean_val + 0.5 * (max_val - mean_val)
@@ -758,7 +758,9 @@ def test_select():
         start = time()
 
         for it in range(100):
-            x_idx = torch.index_select(x, 0, rough_indices)
+            ratio = 0.001
+            val, idx = select_topk(x, ratio )
+            #x_idx = torch.index_select(x, 0, rough_indices)
             #val_ref, idx_ref = torch.topk(x, int(x_len*0.001)+1, 0, largest=True, sorted=False)
         torch.cuda.synchronize()
         stop = time()
@@ -784,7 +786,7 @@ def check():
 
 if __name__ == '__main__':
     torch.manual_seed(123)
-    check()
+    test_select()
     exit(0)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])
