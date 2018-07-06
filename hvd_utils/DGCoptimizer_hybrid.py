@@ -273,10 +273,11 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     #print("p_flatten size is ,", p_flatten.size())
                     #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
                     #print("hand is ", handle)
-                    offset = 0
-                    for node_idx in range(hvd.size()):
-                        if self._use_gpu:
-                            if p_size > self._plan3:
+                    if self._use_gpu:
+                        if p_size > self._plan3:
+                            count_nnz = 0
+                            offset = 0
+                            for node_idx in range(hvd.size()):
                                 msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
                                 offset += 1
                                 p_flatten[self._compressed_msg[name][ offset: \
@@ -284,8 +285,12 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                         self._compressed_msg[name][offset + msg_size : \
                                         offset + 2*msg_size]
                                 offset += msg_size * 2;
-                            else:
-                                msg_size = self._compressed_msg_size[name]
+                                count_nnz += msg_size
+                            if hvd.rank() == 0:
+                                print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
+                        else:
+                            msg_size = self._compressed_msg_size[name]
+                            for node_idx in range(hvd.size()):
                                 p_flatten[self._compressed_msg[name][node_idx*msg_size*2 : \
                                     node_idx*msg_size*2 + msg_size].type('torch.cuda.LongTensor')] += \
                                     self._compressed_msg[name][node_idx*msg_size*2 + msg_size : \
