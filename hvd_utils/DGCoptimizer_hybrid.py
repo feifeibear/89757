@@ -49,8 +49,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._momentum = momentum
         self._weight_decay = weight_decay
         self._debug = False
-        self._use_allgather = use_allgather ##True
-#        self._use_allgather = False##True
+        #self._use_allgather = use_allgather ##True
+        self._use_allgather = False##True
 
         # define U for residue, V for momentum
         if self._use_gpu:
@@ -85,7 +85,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._it = 0
         self._plan3 = 4194304
         self._plan2 = 1048576
-        self._plan1 = 0 #10240
+        self._plan1 = 10240
 
         #if size() > 1:
         self._register_hooks()
@@ -231,8 +231,21 @@ class _DGCOptimizer(torch.optim.Optimizer):
             else:
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+                p.grad.data.div_(hvd.size())
+                p.grad.data.add_(torch.mul(p.data, self._weight_decay))
+                param_state = self.state[p]
+                if 'momentum_buffer' not in param_state:
+                    param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                if self._use_nesterov:
+                    param_state['momentum_buffer'] = torch.mul(torch.add(param_state['momentum_buffer'], p.grad.data), self._momentum)
+                    #self._V[name] = self._V[name] + self._U[name] + p.grad.data
+                    p.grad.data = param_state['momentum_buffer'] + p.grad.data
+                else:
+                    param_state['momentum_buffer']= self._momentum * param_state['momentum_buffer'] + p.grad.data
+                    #self._V[name] = self._V[name] + self._U[name]
+                    p.grad.data = param_state['momentum_buffer']
                 if hvd.size() > 1:
-                    handle = allreduce_async_(p.grad.data, average=True, name=name)
+                    handle = allreduce_async_(p.grad.data, average=False, name=name)
                     self._handles[p] = handle
 
             torch.cuda.synchronize()
@@ -289,24 +302,25 @@ class _DGCOptimizer(torch.optim.Optimizer):
                         if( torch.abs(diff) > 1e-3 ):
                             print("error diff is, ", diff, name, p.size())
                 else:
-                    d_p = p.grad.data
-                    weight_decay = self._weight_decay #group['weight_decay']
-                    momentum = self._momentum #group['momentum']
-                    dampening = 0.0 #group['dampening']
-                    if weight_decay != 0:
-                        d_p.add_(weight_decay, p.data)
-                    if momentum != 0:
-                        param_state = self.state[p]
-                        if 'momentum_buffer' not in param_state:
-                            buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
-                            buf.mul_(momentum).add_(d_p)
-                        else:
-                            buf = param_state['momentum_buffer']
-                            buf.mul_(momentum).add_(1 - dampening, d_p)
-                        if self._use_nesterov:
-                            d_p = d_p.add(momentum, buf)
-                        else:
-                            d_p = buf
+                    pass
+                    #d_p = p.grad.data
+                    #weight_decay = self._weight_decay #group['weight_decay']
+                    #momentum = self._momentum #group['momentum']
+                    #dampening = 0.0 #group['dampening']
+                    #if weight_decay != 0:
+                    #    d_p.add_(weight_decay, p.data)
+                    #if momentum != 0:
+                    #    param_state = self.state[p]
+                    #    if 'momentum_buffer' not in param_state:
+                    #        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                    #        buf.mul_(momentum).add_(d_p)
+                    #    else:
+                    #        buf = param_state['momentum_buffer']
+                    #        buf.mul_(momentum).add_(1 - dampening, d_p)
+                        #if self._use_nesterov:
+                        #    d_p = d_p.add(momentum, buf)
+                        #else:
+                        #    d_p = buf
 
                 torch.cuda.synchronize()
                 end_time = time.time()

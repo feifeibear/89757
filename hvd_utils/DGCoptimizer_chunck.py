@@ -57,16 +57,12 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                      in sorted(named_parameters)}
             self._U = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()).cuda() for k, v
-                                     in sorted(named_parameters)}
             self._masks = {k: torch.zeros(v.size()).cuda() for k, v
                                      in sorted(named_parameters)}
             self._compressed_msg = {k: torch.zeros(0).cuda() for k, v
                                  in sorted(named_parameters)}
         else:
             self._V = {k: torch.zeros(v.size()) for k, v
-                                     in sorted(named_parameters)}
-            self._U = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
             self._U = {k: torch.zeros(v.size()) for k, v
                                      in sorted(named_parameters)}
@@ -106,7 +102,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
             p_size = np.prod(p.size())
             torch.cuda.synchronize()
             begin_time =  time.time()
-            if self._use_allgather and p_size > 1024 and len(p.size()) == 4:
+            #if self._use_allgather and p_size > 1024 and len(p.size()) == 4:
+            if self._use_allgather:
                 # fjr compress grad
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 p.grad.data.div_(hvd.size())
@@ -133,12 +130,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 end_select_time =  time.time()
                 self.select_time += end_select_time - begin_select_time
 
-                masks_size = self._masks[name].size()
                 self._masks[name].zero_()
-                self._masks[name] = self._masks[name].view(-1)
                 self._masks[name][compressed_idx] = 1.0
                 self._masks[name] = 1.0 - self._masks[name]
-                self._masks[name] = self._masks[name].view(masks_size)
 
                 if self._debug:
                     self._v_ref[name] = self._V[name] * (1.0 - self._masks[name])

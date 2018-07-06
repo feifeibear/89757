@@ -774,10 +774,17 @@ def test_select():
     #    ret =torch.cat((torch.tensor([10]).type(torch.cuda.LongTensor), idx))
 #    print(ret)
 
+def check():
+    x = torch.randn(256, 256, 3, 3) #FloatTensor([[1, 2, 3], [4, 5, 6]])
+    ratio = 0.001
+    val, idx = select_topk(x, ratio )
+    val_ref, idx_ref = select_trim_topk(x, ratio )
+    print("2. diff : ", torch.norm(val) - torch.norm(val_ref));
+    print("2. diff : ", torch.sum(idx_ref) - torch.sum(idx));
 
 if __name__ == '__main__':
     torch.manual_seed(123)
-    test_select()
+    check()
     exit(0)
     #x = torch.randn(10, 10) #FloatTensor([[1, 2, 3], [4, 5, 6]])
     #x = torch.randn(10000, 1500) #FloatTensor([[1, 2, 3], [4, 5, 6]])

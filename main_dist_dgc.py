@@ -335,19 +335,12 @@ def main():
     if hvd.rank() == 0:
         print("model ", args.model, " use_nesterov ", args.use_nesterov)
 
-    if args.gpus is not None:
-        U = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-        V = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-    else:
-        U = [torch.zeros(w.size()) for w in list(model.parameters())]
-        V = [torch.zeros(w.size()) for w in list(model.parameters())]
-
-
     #TODO u, v will be cleared at the begining of each epoch
     if args.use_pruning:
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+        #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
         if args.gpus is not None:
-            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4)
+            optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=True, momentum=0.9, weight_decay=1e-4, use_allgather=True)
         else:
             optimizer = DGCDistributedOptimizer(optimizer, named_parameters=model.named_parameters(), use_gpu=False, momentum=0.9, weight_decay=1e-4)
     else:
