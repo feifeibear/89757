@@ -16,8 +16,8 @@ if __name__ == '__main__':
     bwd = []
 
     handles = {}
-    for i in range(20):
-        size =  128 * 2**i
+    for i in range(18):
+        size = 1024 * (2**i)
         p_g = torch.randn(size).cuda()
         torch.cuda.synchronize()
         begin_time = time.time()
@@ -32,9 +32,9 @@ if __name__ == '__main__':
         torch.cuda.synchronize()
         end_time = time.time()
         if hvd.local_rank() == 0:
-            print(size * 8 / 1024, "KB")
+            print(size * 4 / 1024, "KB")
             #print('allreduce time, ', (end_time - begin_time) / rept)
-            bandwidth = size*32 * rept /(end_time - begin_time) / 1e9
+            bandwidth = size*4 * rept /(end_time - begin_time) / 1e9
             print('allreduce bandwidth, ', bandwidth)
             data_size.append(size)
             bwd.append(bandwidth)
