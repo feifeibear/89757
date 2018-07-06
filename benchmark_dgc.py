@@ -184,6 +184,12 @@ def main():
     elif args.pruning_mode == 8:
         print("topk quant mode")
         from hvd_utils.DGCoptimizer_thd_quant import DGCDistributedOptimizer
+    elif args.pruning_mode == 9:
+        logging.info("param mode")
+        from hvd_utils.DGCoptimizer_param import DGCDistributedOptimizer
+    elif args.pruning_mode == 10:
+        logging.info("param mode")
+        from hvd_utils.DGCoptimizer_hybrid import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
@@ -322,14 +328,6 @@ def main():
     print("current rank ", hvd.rank(), "local_rank ", hvd.local_rank(), \
             " USE_PRUNING ", args.use_pruning)
     print("model ", args.model, " use_nesterov ", args.use_nesterov)
-
-    if args.gpus is not None:
-        U = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-        V = [torch.zeros(w.size()).cuda() for w in list(model.parameters())]
-    else:
-        U = [torch.zeros(w.size()) for w in list(model.parameters())]
-        V = [torch.zeros(w.size()) for w in list(model.parameters())]
-
 
     #TODO u, v will be cleared at the begining of each epoch
     if args.use_pruning:
@@ -470,6 +468,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     #         print(input_var.size())
     #         print(target_var.size())
     #     break
+    print("before iter")
     if "imagenet" in args.dataset:
         input_var = Variable(torch.randn(args.batch_size, 3, 244, 244).cuda(), volatile=not training)
         target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 1000).cuda())
