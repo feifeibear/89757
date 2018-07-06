@@ -310,8 +310,7 @@ def select_top_k_thdv3(x, pruning_ratio, l = 0.0, r = 1.0, param = 20.0):
     while (r - l) > eps:
         mid = l + (r - l)/2
         threshold = mean_val + mid * (max_val - mean_val)
-        x_sparse = x_abs > threshold
-        rough_indices = torch.nonzero(x_sparse).view(-1)
+        rough_indices = torch.nonzero(x_abs > threshold).view(-1)
         N = len(rough_indices)
         if N > top_k / 2 and N < top_k * 1.5:
             break

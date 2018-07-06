@@ -84,6 +84,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._sparsity = 0.0
         self._it = 0
         self._plan3 = 4194304
+        #self._plan3 = 4194304000
         self._plan2 = 131072
         self._plan1 = 10240
 
@@ -151,6 +152,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 if p_size > self._plan3:
                     compressed_val, compressed_idx, it, _, sparsity = \
                         select_top_k_thdv3(param_state['residue_buffer'], 0.001)
+                    #compressed_val, compressed_idx = \
+                    #        select_trim_topk(param_state['residue_buffer'], 0.001)
                 elif p_size > self._plan2:
                     compressed_val, compressed_idx = \
                             select_trim_topk(param_state['residue_buffer'], 0.001)
@@ -275,7 +278,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     #print("hand is ", handle)
                     if self._use_gpu:
                         if p_size > self._plan3:
-                            count_nnz = 0
+                            #count_nnz = 0
                             offset = 0
                             for node_idx in range(hvd.size()):
                                 msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
@@ -285,9 +288,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                         self._compressed_msg[name][offset + msg_size : \
                                         offset + 2*msg_size]
                                 offset += msg_size * 2;
-                                count_nnz += msg_size
-                            if hvd.rank() == 0:
-                                print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
+                                #count_nnz += msg_size
+                            #if hvd.rank() == 0:
+                            #    print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
                         else:
                             msg_size = self._compressed_msg_size[name]
                             for node_idx in range(hvd.size()):
