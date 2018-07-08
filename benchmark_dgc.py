@@ -184,6 +184,9 @@ def main():
     elif args.pruning_mode == 10:
         print("hybrid mode")
         from hvd_utils.DGCoptimizer_hybrid import DGCDistributedOptimizer
+    elif args.pruning_mode == 11:
+        print("hybrid quant mode")
+        from hvd_utils.DGCoptimizer_hybrid_quant import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
@@ -444,7 +447,11 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     batch_time = AverageMeter()
     pruning_time = AverageMeter()
     select_time = AverageMeter()
-    comm_time= AverageMeter()
+    mask_time= AverageMeter()
+    pack_time = AverageMeter()
+    unpack_time = AverageMeter()
+    mom_time = AverageMeter()
+    allreduce_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -473,11 +480,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         input_var = Variable(torch.randn(args.batch_size, 3, 32, 32).cuda(), volatile=not training)
         target_var = Variable(torch.LongTensor(args.batch_size).random_(0, 100).cuda())
 
-    torch.cuda.synchronize()
-    end = time.time()
     for i in range(200):
         # measure data loading time
-        data_time.update(time.time() - end)
 
         # compute output
         if not training:
@@ -491,6 +495,9 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             top5.update(prec5[0], input_var.size(0))
 
         else:
+            if i > 30:
+                torch.cuda.synchronize()
+                end = time.time()
 
             output = model(input_var)
             loss = criterion(output, target_var)
@@ -502,20 +509,34 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
             #if args.use_pruning:
             #    clip_grad_norm(model.parameters(), 5. * (hvd.size() ** -0.5))
-
-            optimizer.zero_grad()
-            loss.backward()
-
-
-            # Master
-            if 1 and args.use_pruning:
-                pruning_time.update(optimizer.pruning_time)
-                select_time.update(optimizer.select_time)
-                comm_time.update(optimizer.pack_time)
+            if args.use_pruning:
+                torch.cuda.synchronize()
                 optimizer.pruning_time = 0.0
                 optimizer.select_time = 0.0
                 optimizer.pack_time = 0.0
-            # if args.use_pruning:
+                optimizer.unpack_time = 0.0
+                optimizer.mask_time= 0.0
+                optimizer.mom_time= 0.0
+                optimizer.allreduce_time= 0.0
+
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+
+            # Master
+            if args.use_pruning:
+                if i > 30:
+                    torch.cuda.synchronize()
+                    pruning_time.update(optimizer.pruning_time)
+                    select_time.update(optimizer.select_time)
+                    pack_time.update(optimizer.pack_time)
+                    unpack_time.update(optimizer.unpack_time)
+                    mask_time.update(optimizer.mask_time)
+                    mom_time.update(optimizer.mom_time)
+                    allreduce_time.update(optimizer.allreduce_time)
+                            # if args.use_pruning:
             # else:
             #     # idx = 0
             #     # for p in list(model.parameters()):
@@ -532,12 +553,11 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             #     optimizer.synchronize()
             #     clip_grad_norm(model.parameters(), 5.)
 
-            optimizer.step()
 
-        # measure elapsed time
-        torch.cuda.synchronize()
-        batch_time.update(time.time() - end)
-        end = time.time()
+            # measure elapsed time
+            if i > 30:
+                torch.cuda.synchronize()
+                batch_time.update(time.time() - end)
 
         if i % args.print_freq == 0:
             if hvd.rank() == 0:
@@ -546,7 +566,11 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                              'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                              'Prune {pruning_time.val:.9f} ({pruning_time.avg:.3f})\t'
                              'Select {select_time.val:.9f} ({select_time.avg:.3f})\t'
-                             'Communication {comm_time.val:.9f} ({comm_time.avg:.3f})\t'
+                             'mask {mask_time.val:.9f} ({mask_time.avg:.3f})\t'
+                             'pack {pack_time.val:.9f} ({pack_time.avg:.3f})\t'
+                             'unpack {unpack_time.val:.9f} ({unpack_time.avg:.3f})\t'
+                             'mom {mom_time.val:.9f} ({mom_time.avg:.3f})\t'
+                             'allreduce_time {allreduce_time.val:.9f} ({allreduce_time.avg:.3f})\t'
                              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                              'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                              'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
@@ -556,7 +580,11 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                                  data_time=data_time,
                                  pruning_time = pruning_time,
                                  select_time = select_time,
-                                 comm_time = comm_time,
+                                 mask_time = mask_time,
+                                 pack_time = pack_time,
+                                 unpack_time = unpack_time,
+                                 allreduce_time = allreduce_time,
+                                 mom_time = mom_time,
                              loss=losses, top1=top1, top5=top5))
 
     return {'loss': losses.avg,

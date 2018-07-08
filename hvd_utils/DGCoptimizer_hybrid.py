@@ -79,6 +79,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self.pruning_time = 0.0
         self.select_time = 0.0
         self.pack_time = 0.0
+        self.unpack_time = 0.0
+        self.mask_time = 0.0
+        self.mom_time = 0.0
+        self.allreduce_time = 0.0
 
         self._mid = 0
         self._sparsity = 0.0
@@ -110,6 +114,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
             begin_time =  time.time()
 
             if self._use_allgather and p_size > self._plan1:
+                torch.cuda.synchronize()
+                begin_mom_time =  time.time()
+
                 weight_decay = self._weight_decay #group['weight_decay']
                 momentum = self._momentum #group['momentum']
                 dampening = 0.0 #group['dampening']
@@ -137,11 +144,15 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     if self._use_nesterov:
                         rsd  = rsd.add(momentum, d_p)
 
+                torch.cuda.synchronize()
+                self.mom_time += time.time() - begin_mom_time
+
                 compressed_val = []
                 compressed_idx = []
 
                 torch.cuda.synchronize()
                 begin_select_time =  time.time()
+
                 if 'mid_store' not in param_state:
                     param_state['mid_store'] = 0.0
                 if 'interval' not in param_state:
@@ -152,8 +163,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 if p_size > self._plan3:
                     compressed_val, compressed_idx, it, _, sparsity = \
                         select_top_k_thdv3(param_state['residue_buffer'], 0.001)
-                    #compressed_val, compressed_idx = \
-                    #        select_trim_topk(param_state['residue_buffer'], 0.001)
                 elif p_size > self._plan2:
                     compressed_val, compressed_idx = \
                             select_trim_topk(param_state['residue_buffer'], 0.001)
@@ -161,6 +170,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     compressed_val, compressed_idx = \
                             select_topk(param_state['residue_buffer'], 0.001)
 
+                assert(len(compressed_idx) > 0)
+                torch.cuda.synchronize()
+                end_select_time =  time.time()
+                self.select_time += end_select_time - begin_select_time
                 #if param_state['interval'] == 10:
                 #    compressed_val, compressed_idx, it, param_state['mid_store'], sparsity = \
                 #            select_top_k_thdv3(param_state['residue_buffer'], 0.001)
@@ -169,7 +182,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #    compressed_val, compressed_idx, sparsity = \
                 #            select_top_k_fixthd(param_state['residue_buffer'], param_state['mid_store'])
                 #    param_state['interval'] += 1
-                assert(len(compressed_idx) > 0)
                 #if hvd.rank() == 0:
                 #    print(name, p.size())
                 #if hvd.rank() == 0 and name == "features.27.weight":
@@ -180,9 +192,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 #    self._it = it
                 #    self._mid = param_state['mid_store']
                 #    self._sparsity = sparsity
-                torch.cuda.synchronize()
-                end_select_time =  time.time()
-                self.select_time += end_select_time - begin_select_time
                 #tmp_t = torch.tensor([local_len], dtype=torch.long)
 #                tmp_t = torch.tensor([local_len])
                 # print("len list, ", global_len_list)
@@ -190,6 +199,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 ##print("local_len, ", local_len)
                 #compressed_val = compressed_val[0:local_len]
                 #compressed_idx = compressed_idx[0:local_len]
+
+                torch.cuda.synchronize()
+                begin_mask_time =  time.time()
 
                 masks_size = self._masks[name].size()
                 self._masks[name].zero_()
@@ -210,6 +222,9 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 param_state['residue_buffer'].mul_(self._masks[name])
                 param_state['momentum_buffer'].mul_(self._masks[name])
 
+                end_mask_time =  time.time()
+                self.mask_time += end_mask_time - begin_mask_time
+
                 torch.cuda.synchronize()
                 begin_pack_time =  time.time()
 
@@ -226,7 +241,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                             compressed_msg = torch.cat([compressed_idx.type('torch.cuda.FloatTensor'), \
                                 compressed_val])
                             handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
-
                     self._handles[p] = handle
 
                 torch.cuda.synchronize()
@@ -234,20 +248,28 @@ class _DGCOptimizer(torch.optim.Optimizer):
             else:
                 #compressed_msg = torch.randn(100).cuda()
                 #handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
+                torch.cuda.synchronize()
+                begin_allreduce_time =  time.time()
                 p.grad.data.div_(hvd.size())
                 p.grad.data.add_(torch.mul(p.data, self._weight_decay))
                 param_state = self.state[p]
                 if 'momentum_buffer' not in param_state:
-                    param_state['momentum_buffer'] = torch.zeros_like(p.data)
-                if self._use_nesterov:
-                    param_state['momentum_buffer'] = torch.mul(torch.add(param_state['momentum_buffer'], p.grad.data), self._momentum)
-                    p.grad.data = param_state['momentum_buffer'] + p.grad.data
+                    buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
                 else:
-                    param_state['momentum_buffer']= self._momentum * param_state['momentum_buffer'] + p.grad.data
+                    buf = param_state['momentum_buffer']
+                if self._use_nesterov:
+                    buf = torch.mul(torch.add(buf, p.grad.data), self._momentum)
+                    p.grad.data.add_(buf)
+                    #param_state['momentum_buffer'] = torch.mul(torch.add(param_state['momentum_buffer'], p.grad.data), self._momentum)
+                    #p.grad.data.add_(param_state['momentum_buffer'])
+                else:
+                    param_state['momentum_buffer'] = self._momentum * param_state['momentum_buffer'] + p.grad.data
                     p.grad.data = param_state['momentum_buffer']
                 if hvd.size() > 1:
                     handle = allreduce_async_(p.grad.data, average=False, name=name)
                     self._handles[p] = handle
+                torch.cuda.synchronize()
+                self.allreduce_time += time.time() - begin_allreduce_time
 
             torch.cuda.synchronize()
             end_time = time.time()
@@ -260,22 +282,22 @@ class _DGCOptimizer(torch.optim.Optimizer):
             for p in self._handles:
                 handle = self._handles[p]
                 synchronize(handle)
-                torch.cuda.synchronize()
-                begin_time = time.time()
-                p_size = np.prod(p.size())
+                #p_size = np.prod(p.size())
+
+                p_size = np.prod(p.size()) #torch.numel(p)
                 if self._use_allgather and p_size > self._plan1:
-                    #fjr decompress
-                    name = self._parameter_names.get(p)
 
                     torch.cuda.synchronize()
-                    begin_pack_time =  time.time()
+                    begin_time_sync = time.time()
+                    #fjr decompress
+                    name = self._parameter_names.get(p)
 
                     g_size = p.grad.data.size()
                     p_flatten = p.grad.data.view(-1)
                     p_flatten.zero_()
-                    #print("p_flatten size is ,", p_flatten.size())
-                    #print("compressed msg, ", self._compressed_msg[name], 'rank, ', hvd.local_size())
-                    #print("hand is ", handle)
+
+                    torch.cuda.synchronize()
+                    begin_unpack_time =  time.time()
                     if self._use_gpu:
                         if p_size > self._plan3:
                             #count_nnz = 0
@@ -288,7 +310,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                         self._compressed_msg[name][offset + msg_size : \
                                         offset + 2*msg_size]
                                 offset += msg_size * 2;
-                                #count_nnz += msg_size
+                            #count_nnz += msg_size
                             #if hvd.rank() == 0:
                             #    print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
                         else:
@@ -299,38 +321,19 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                     self._compressed_msg[name][node_idx*msg_size*2 + msg_size : \
                                     node_idx*msg_size*2 + 2*msg_size]
 
-                    torch.cuda.synchronize()
-                    self.pack_time += time.time() - begin_pack_time
-
                     p.grad.data = p_flatten.view(g_size)
+                    torch.cuda.synchronize()
+                    self.unpack_time += time.time() - begin_unpack_time
+                    torch.cuda.synchronize()
+                    self.pruning_time += time.time() - begin_time_sync
+
                     if self._debug:
                         diff = torch.sum(self._v_ref[name] - p.grad.data)
                         if( torch.abs(diff) > 1e-3 ):
                             print("error diff is, ", diff, name, p.size())
+
                 else:
                     pass
-                    #d_p = p.grad.data
-                    #weight_decay = self._weight_decay #group['weight_decay']
-                    #momentum = self._momentum #group['momentum']
-                    #dampening = 0.0 #group['dampening']
-                    #if weight_decay != 0:
-                    #    d_p.add_(weight_decay, p.data)
-                    #if momentum != 0:
-                    #    param_state = self.state[p]
-                    #    if 'momentum_buffer' not in param_state:
-                    #        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
-                    #        buf.mul_(momentum).add_(d_p)
-                    #    else:
-                    #        buf = param_state['momentum_buffer']
-                    #        buf.mul_(momentum).add_(1 - dampening, d_p)
-                        #if self._use_nesterov:
-                        #    d_p = d_p.add(momentum, buf)
-                        #else:
-                        #    d_p = buf
-
-                torch.cuda.synchronize()
-                end_time = time.time()
-                self.pruning_time += end_time - begin_time
 
         self._handles.clear()
 

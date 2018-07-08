@@ -310,6 +310,7 @@ def select_top_k_thdv3(x, pruning_ratio, l = 0.0, r = 1.0, param = 20.0):
     while (r - l) > eps:
         mid = l + (r - l)/2
         threshold = mean_val + mid * (max_val - mean_val)
+        del rough_indices
         rough_indices = torch.nonzero(x_abs > threshold).view(-1)
         N = len(rough_indices)
         if N > top_k / 2 and N < top_k * 1.5:
@@ -361,6 +362,35 @@ def select_top_k_thdv2(x, pruning_ratio, param = 0.0):
     return rough_val, rough_indices
 
 
+def select_trim_topk_mean(x, pruning_ratio):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    max_val = torch.max(x)
+    mean_val = torch.mean(x)
+    # roughly select top
+    param = 0.9
+    rough_indices = []
+    while len(rough_indices) < top_k:
+        threshold = mean_val + param * (max_val - mean_val)
+        x_sparse = x_flatten > threshold
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        param -= 0.1
+    #print(param)
+
+    rough_val = torch.index_select(x_flatten, 0, rough_indices)
+
+    #print(len(rough_indices), top_k)
+    x_val, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
+    x_idx = torch.index_select(rough_indices, 0, fine_indices)
+    return x_val, x_idx
+
+
+
 def select_topk_truncated_mean(x, pruning_ratio, mask):
     r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
     x_size = x.size()
@@ -393,6 +423,37 @@ def select_topk_truncated_mean(x, pruning_ratio, mask):
     mask = 1.0 - mask
     mask = mask.view(x_size)
     return mask, x_val, x_idx
+
+
+def select_trim_lowk_mean(x, pruning_ratio):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    min_val = torch.min(x)
+    mean_val = torch.mean(x)
+    # roughly select top
+    param = 0.1
+    rough_indices = []
+    while len(rough_indices) < top_k:
+        threshold = min_val + param * (mean_val - min_val)
+        x_sparse = x_flatten < threshold
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        param += 0.1
+    #print(param)
+
+    rough_val = torch.index_select(x_flatten, 0, rough_indices)
+
+    #print(len(rough_indices), top_k)
+    x_val, fine_indices = torch.topk(rough_val, top_k, 0, largest=False, sorted=False)
+    x_idx = torch.index_select(rough_indices, 0, fine_indices)
+    return x_val, x_idx
+
+
+
 
 def select_lowk_truncated_mean(x, pruning_ratio, mask):
     r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
@@ -517,6 +578,30 @@ def select_topk(x, pruning_ratio):
 
     return x_val, x_idx
 
+def select_topk_mean(x, pruning_ratio):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    x_val, x_idx = torch.topk(x_flatten, top_k, 0, largest=True, sorted=False)
+    return x_val, x_idx
+
+def select_lowk_mean(x, pruning_ratio):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    x_val, x_idx = torch.topk(x_flatten, top_k, 0, largest=False, sorted=False)
+    return x_val, x_idx
+
+
+
 
 
 
@@ -533,16 +618,59 @@ def select_trim_topk(x, pruning_ratio):
     #print("max_val ", max_val, " mean_val ", mean_val, " threshold ", threshold)
 
     # roughly select top
-    param = 0.9
+    param = 0.8
     rough_indices = []
     while len(rough_indices) < top_k:
         threshold = mean_val + param * (max_val - mean_val)
         x_sparse = torch.abs(x_flatten) > threshold
+        del rough_indices
         rough_indices = torch.nonzero(x_sparse).view(-1)
-        param -= 0.1
+        param -= 0.2
 
     rough_val = torch.index_select(torch.abs(x_flatten), 0, rough_indices)
 
+    _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
+    x_idx = torch.index_select(rough_indices, 0, fine_indices)
+
+    x_val = torch.index_select(x_flatten, 0, x_idx)
+    return x_val, x_idx
+
+
+def select_trim_topkv2(x, pruning_ratio):
+    r"""a fast function to select top k% abs largest elements, and assign indices to mask"""
+    x_size = x.size()
+    x_len = 1;
+    for dim in x.size():
+        x_len *= dim
+    x_flatten = x.view(-1)
+    top_k = int(x_len * pruning_ratio) + 1
+    max_val = torch.max(torch.abs(x))
+    mean_val = torch.mean(torch.abs(x))
+
+    l = 0.0;
+    r = 1.0
+    rough_indices = []
+    it = 0
+    while it < 3:
+        it += 1
+        mid = l + (r - l) / 2
+        threshold = mean_val + mid * (max_val - mean_val)
+        x_sparse = torch.abs(x_flatten) > threshold
+        del rough_indices
+        rough_indices = torch.nonzero(x_sparse).view(-1)
+        N = len(rough_indices)
+        if N > top_k and N < 2*top_k:
+            break
+        elif N < top_k:
+            l = mid
+        else:
+            r = mid
+
+    x_sparse = torch.abs(x_flatten) > l
+    del rough_indices
+    rough_indices = torch.nonzero(x_sparse).view(-1)
+
+    rough_val = torch.index_select(torch.abs(x_flatten), 0, rough_indices)
     _, fine_indices = torch.topk(rough_val, top_k, 0, largest=True, sorted=False)
     x_idx = torch.index_select(rough_indices, 0, fine_indices)
 
@@ -746,19 +874,19 @@ def test_select():
     for i in range(18):
         x_len = 1024 * (2**i)
         x = torch.randn(x_len).cuda()
-
-        max_val = torch.max(x)
-        mean_val = torch.mean(x)
-        thd = mean_val + 0.5 * (max_val - mean_val)
-        x_sparse = x > thd
-        rough_indices = torch.nonzero(x).view(-1)
-
         torch.cuda.synchronize()
         start = time()
 
         for it in range(100):
             ratio = 0.001
-            val, idx = select_topk(x, ratio )
+            #val, idx = select_topk(x, ratio )
+            val, idx = select_trim_topkv2(x, ratio )
+            #val, idx, _, mid, _ = select_top_k_thdv3(x, ratio)
+
+            #if it % 5 == 0:
+            #    val, idx, _, mid, _ = select_top_k_thdv3(x, ratio)
+            #else:
+            #    val, idx, _ = select_top_k_fixthd(x, mid)
             #x_idx = torch.index_select(x, 0, rough_indices)
             #val_ref, idx_ref = torch.topk(x, int(x_len*0.001)+1, 0, largest=True, sorted=False)
         torch.cuda.synchronize()

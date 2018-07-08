@@ -147,7 +147,6 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     else:
                         compressed_msg = torch.cat([compressed_idx.type('torch.FloatTensor'), \
                                 compressed_val])
-
                     handle = _allgather_async(compressed_msg, self._compressed_msg[name], name=name)
                     self._handles[p] = handle
 
