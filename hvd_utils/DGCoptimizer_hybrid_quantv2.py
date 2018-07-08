@@ -251,20 +251,22 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     if self._use_gpu:
                         if p_size > self._plan3:
                             compressed_msg= torch.cat((\
-                                torch.tensor([len(compressed_idx)]).type(torch.cuda.LongTensor),\
-                                compressed_idx))
-                            handle = _allgather_async(compressed_msg, self._compressed_idx[name], name=name + "idx")
+                                torch.tensor([len(compressed_idx)]).type(torch.cuda.FloatTensor),\
+                                compressed_idx.type(torch.cuda.FloatTensor),\
+                                torch.mean(compressed_val).view(1)
+                                ))
+                            handle = _allgather_async(compressed_msg, self._compressed_val[name], \
+                                    name=name)
                             self._handles[p] = handle
-
-                            handle = _allgather_async(torch.mean(compressed_val), self._compressed_val[name], name=name + "val")
                         else:
                             self._compressed_msg_size[name] = len(compressed_idx)
-                            handle = _allgather_async(compressed_idx, self._compressed_idx[name], \
-                                    name = name+"idx")
+                            compressed_msg = torch.cat((\
+                                compressed_idx.type(torch.cuda.FloatTensor),\
+                                torch.mean(compressed_val).view(1)
+                                ))
+                            handle = _allgather_async(compressed_msg, self._compressed_val[name], \
+                                    name = name)
                             self._handles[p] = handle
-                            handle = _allgather_async(torch.mean(compressed_val), \
-                                    self._compressed_val[name], name=name+"val")
-                            self._handles_val[p] = handle
                 torch.cuda.synchronize()
                 self.pack_time += time.time() - begin_pack_time
             else:
@@ -299,11 +301,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
                 handle = self._handles[p]
                 synchronize(handle)
                 #p_size = np.prod(p.size())
-
                 p_size = torch.numel(p)
                 if self._use_allgather and p_size > self._plan1:
-                    handle = self._handles_val[p]
-                    synchronize(handle)
                     torch.cuda.synchronize()
                     begin_time_sync = time.time()
                     #fjr decompress
@@ -320,21 +319,23 @@ class _DGCOptimizer(torch.optim.Optimizer):
                             #count_nnz = 0
                             offset = 0
                             for node_idx in range(hvd.size()):
-                                msg_size = self._compressed_idx[name][offset]
+                                msg_size = self._compressed_idx[name][offset].type(torch.cuda.LongTensor)
                                 offset += 1
-                                p_flatten[self._compressed_idx[name][ offset: \
-                                        offset + msg_size]] += \
-                                        self._compressed_val[name][node_idx]
-                                offset += msg_size;
+                                p_flatten[self._compressed_val[name][ offset: \
+                                        offset + msg_size].type(torch.cuda.LongTensor)] += \
+                                        self._compressed_val[name][offset + msg_size]
+                                offset += msg_size + 1;
                             #count_nnz += msg_size
                             #if hvd.rank() == 0:
                             #    print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
                         else:
                             msg_size = self._compressed_msg_size[name]
+                            offset = 0
                             for node_idx in range(hvd.size()):
-                                p_flatten[self._compressed_idx[name][node_idx*msg_size : \
-                                        node_idx*msg_size + msg_size]] += \
-                                        self._compressed_val[name][node_idx]
+                                p_flatten[self._compressed_val[name][offset : \
+                                        offset + msg_size].type(torch.cuda.LongTensor)] += \
+                                        self._compressed_val[name][offset + msg_size]
+                                offset += msg_size + 1;
 
                     p.grad.data = p_flatten.view(g_size)
                     torch.cuda.synchronize()
