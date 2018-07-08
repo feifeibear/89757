@@ -190,6 +190,9 @@ def main():
     elif args.pruning_mode == 12:
         print("hybrid v2 quant mode")
         from hvd_utils.DGCoptimizer_hybrid_quantv2 import DGCDistributedOptimizer
+    elif args.pruning_mode == 13:
+        print("hybrid v2 mode")
+        from hvd_utils.DGCoptimizer_hybridv2 import DGCDistributedOptimizer
     else:
         print("pruning_mode should be set correctly")
         exit(0)
