@@ -91,7 +91,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._plan3 = 4194304
         #self._plan3 = 4194304000
         self._plan2 = 131072
-        self._plan1 = 10240
+        self._plan1 = 102400
 
         #if size() > 1:
         self._register_hooks()
@@ -319,7 +319,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                             #count_nnz = 0
                             offset = 0
                             for node_idx in range(hvd.size()):
-                                msg_size = self._compressed_idx[name][offset].type(torch.cuda.LongTensor)
+                                msg_size = self._compressed_val[name][offset].type(torch.cuda.LongTensor)
                                 offset += 1
                                 p_flatten[self._compressed_val[name][ offset: \
                                         offset + msg_size].type(torch.cuda.LongTensor)] += \
