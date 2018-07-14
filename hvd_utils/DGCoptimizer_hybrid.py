@@ -90,7 +90,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._plan3 = 4194304
         #self._plan3 = 4194304000
         self._plan2 = 131072
-        self._plan1 = 102400
+        #self._plan1 = 102400
+        self._plan1 = 8192
 
         #if size() > 1:
         self._register_hooks()
@@ -300,7 +301,7 @@ class _DGCOptimizer(torch.optim.Optimizer):
                     begin_unpack_time =  time.time()
                     if self._use_gpu:
                         if p_size > self._plan3:
-                            #count_nnz = 0
+                            count_nnz = 0
                             offset = 0
                             for node_idx in range(hvd.size()):
                                 msg_size = self._compressed_msg[name][offset].type('torch.cuda.LongTensor')
@@ -310,9 +311,10 @@ class _DGCOptimizer(torch.optim.Optimizer):
                                         self._compressed_msg[name][offset + msg_size : \
                                         offset + 2*msg_size]
                                 offset += msg_size * 2;
-                            #count_nnz += msg_size
-                            #if hvd.rank() == 0:
-                            #    print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
+                            count_nnz += msg_size
+                            if hvd.rank() == 0:
+                                #print("sparsity ", name, count_nnz.cpu().numpy()/(p_size))
+                                print("sparsity ", name, check_sparsity(p_flatten))
                         else:
                             msg_size = self._compressed_msg_size[name]
                             for node_idx in range(hvd.size()):

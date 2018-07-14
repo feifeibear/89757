@@ -91,7 +91,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._plan3 = 4194304
         #self._plan3 = 4194304000
         self._plan2 = 131072
-        self._plan1 = 10240
+        #self._plan1 = 10240
+        self._plan1 = 8192 
 
         #if size() > 1:
         self._register_hooks()
