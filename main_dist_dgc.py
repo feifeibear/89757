@@ -232,8 +232,8 @@ def main():
                 print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[hvd.local_rank()])
                 torch.cuda.set_device(args.gpus[hvd.local_rank()])
             else:
-                print("rank, ", hvd.local_rank(), " is runing on ", args.gpus[0])
-                torch.cuda.set_device(args.gpus[0])
+                print("rank, ", hvd.local_rank(), " is runing on ", hvd.local_rank() % len(args.gpus))
+                torch.cuda.set_device(args.gpus[hvd.local_rank() % len(args.gpus)])
         cudnn.benchmark = True
     else:
         args.gpus = None
