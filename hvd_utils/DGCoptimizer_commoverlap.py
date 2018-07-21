@@ -47,8 +47,8 @@ class _DGCOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
 
-        if size() > 1:
-            self._register_hooks()
+        #if size() > 1:
+        #    self._register_hooks()
 
     def _register_hooks(self):
         for param_group in self.param_groups:
