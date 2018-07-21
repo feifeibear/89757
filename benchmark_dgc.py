@@ -196,6 +196,7 @@ def main():
     else:
         print("pruning_mode should be set correctly")
         exit(0)
+    from hvd_utils.DGCoptimizer_commoverlap import myhvdOptimizer
 
 
 
@@ -344,7 +345,8 @@ def main():
             print("use orignal hvd DistributedOptimizer")
             optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4,
                     nesterov=True)
-            optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+            #optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+            optimizer = myhvdOptimizer(optimizer, named_parameters=model.named_parameters())
         else:
             optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
             if args.gpus is not None:
